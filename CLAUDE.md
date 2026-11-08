@@ -214,8 +214,10 @@ NVIDIA keys: `cd server && pip install -r requirements.txt && uvicorn fake_serve
 (`TRIAGENT_FAKE_SPEED=5` plays faster). Generate TypeScript types from `python3 server/contracts.py --schema
 app/src/contracts.schema.json` (for example with `npx json-schema-to-typescript`). Endpoints per screen: Inbox
 `GET /jobs`; Incident detail `GET /jobs/{id}`; Live investigation `GET /jobs/{id}/events` (SSE); Actions
-`POST /jobs/{id}/actions`; Scoreboard `GET /scores/latest`; push registration `POST /devices`. Until `store.py`
-writes Supabase, read jobs from the API; the Supabase `jobs` table has the `JobSummary` columns plus the full Job
+`POST /jobs/{id}/actions`; Scoreboard `GET /scores/latest`; push registration `POST /devices`. With `app/.env`
+(`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`) the Inbox reads the Supabase `jobs` table that
+`store.py` writes and subscribes to it (Realtime), and Incident detail falls back to the stored Job JSON when the server
+is unreachable; without them everything comes from the API. The table has the `JobSummary` columns plus the full Job
 JSON (`python3 server/contracts.py --sql`). Screens, in build order: Inbox, Incident detail (problem, cause, evidence timeline with event ids, remediation, confidence), Live investigation (the trace streaming), Actions (approve remediation, escalate, ask a follow-up that re-enters the investigator with the existing findings as context), Scoreboard. Shared demo token for auth; no real login flow. The app talks only to the server's HTTP API and SSE (and to Supabase once `store.py` lands); it never talks to Elasticsearch or Nemotron directly.
 
 ## Dependencies
@@ -255,7 +257,8 @@ JSON (`python3 server/contracts.py --sql`). Screens, in build order: Inbox, Inci
    `server/tuning_knobs.py` sets `critic_retry` 0: a failed review keeps the report with the critic's notes attached)
 7. `runbooks/` and `remediate.py`: done (`remediate_check.py` passes for all ten categories)
 8. `jira_mock.py` and ticket patching: done (a fresh ingest ends with the report as a comment on the mock issue)
-9. `app/` in the screen order above: built against `fake_server.py`, all five screens plus push registration (`app/README.md`); Supabase reads wait on `store.py`
+9. `app/` in the screen order above: all five screens plus push registration (`app/README.md`); realtime Inbox and
+   offline detail from Supabase. Not yet checked on a phone against the real server
 10. Real Jira/SNOW toggle, only if time remains
 
 Contracts (`server/contracts.py`), `fakes.py` and `fake_server.py` exist so steps 7 to 9 can be built in parallel.

@@ -1,7 +1,7 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { api, TERMINAL } from '../../../api';
+import { api, ApiError, TERMINAL } from '../../../api';
 import type { Action, CriticResult, Job, Remediation, Report } from '../../../contracts';
 import { ago, count, pct, seconds, utcDateTime, utcTime } from '../../../format';
 import { mono, STATUS, usePalette } from '../../../theme';
@@ -19,16 +19,31 @@ import {
   Section,
   StatusBadge,
 } from '../../../ui';
+import { supabase, supabaseJob } from '../../../supabase';
 import { usePoll } from '../../../usePoll';
 
-/** Incident detail: GET /jobs/{id}, re-polled every 2 s until the job is done or failed. */
+/**
+ * The server's copy, or, when the server can't be reached from this device (a phone off the laptop's network), the
+ * copy store.py keeps in Supabase. The Supabase copy has everything but the live trace stream and the actions.
+ */
+async function loadJob(id: string): Promise<{ job: Job; offline: boolean }> {
+  try {
+    return { job: await api.job(id), offline: false };
+  } catch (err) {
+    if (!supabase || !(err instanceof ApiError) || err.status !== 0) throw err;
+    return { job: await supabaseJob(id), offline: true };
+  }
+}
+
+/** Incident detail: GET /jobs/{id} (Supabase when the server is unreachable), re-polled every 2 s until done or failed. */
 export default function Incident() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const p = usePalette();
-  const { data: job, error, refresh, refreshing } = usePoll(
-    () => api.job(id),
-    (j) => (j && TERMINAL.has(j.status) ? false : 2000),
+  const { data, error, refresh, refreshing } = usePoll(
+    () => loadJob(id),
+    (d) => (d && TERMINAL.has(d.job.status) ? false : 2000),
   );
+  const job = data?.job;
 
   if (!job) {
     return error ? (
@@ -51,6 +66,12 @@ export default function Incident() {
     >
       <Stack.Screen options={{ title: job.ticket_id }} />
       <Header job={job} />
+
+      {data?.offline ? (
+        <Notice tone="amber" title="Server not reachable: showing the copy in Supabase">
+          The report is complete. The live trace and the actions need a connection to the Triagent server.
+        </Notice>
+      ) : null}
 
       {live ? (
         <Notice tone="blue" title={`${STATUS[job.status]?.label ?? job.status}…`}>

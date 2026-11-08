@@ -49,19 +49,37 @@ npm run contracts                          # PYTHON=../server/.venv/bin/python n
 npm run typecheck && npm run lint
 ```
 
+## Supabase: realtime Inbox, and reports away from the server
+
+With `app/.env` set (copy `.env.example`; the values are in the Supabase dashboard under Project Settings → API, or
+`SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` in `server/.env`):
+
+```bash
+EXPO_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+```
+
+- **Inbox** reads the `jobs` table that `server/store.py` writes on every status change and subscribes to its
+  changes (Supabase Realtime), so new incidents and status changes show up within about a second, even when the
+  phone can't reach the server (cellular, another network). A line above the list says which source is live. If
+  Supabase fails, it falls back to `GET /jobs` every 3 s.
+- **Incident detail** asks the server first; if the server can't be reached, it shows the copy stored in Supabase
+  with a notice. The live trace and the actions still need the server.
+- The publishable key can only read `jobs` (row-level security); push tokens and all writes stay server-side.
+- Without the two variables the app works as before, entirely from the server's API.
+- Restart `npx expo start` after changing `.env`. For an EAS build, set the same two variables in the build's
+  environment as well (EAS environment variables for the `preview` environment; see `npx eas-cli env --help`).
+
+Code: `src/supabase.ts` (client, reads, subscription) and `src/useInbox.ts` (source selection and reloads).
+
 ## Push notifications
 
 The app registers its Expo push token with `POST /devices` at launch, and tapping a notification opens Incident
-detail for `data.job_id`. Registration is best effort and is skipped until these exist:
+detail for `data.job_id`. The server sends a push when a ticket's investigation finishes (`server/notify.py`).
+Registration is best effort and is skipped until these exist:
 
 - an EAS project id in `app.json` (`npx eas-cli@latest init` adds `extra.eas.projectId`)
 - a development build on Android (Expo Go dropped remote push on Android in SDK 53); iOS Expo Go works
-- `server/notify.py`, which sends the pushes (not built yet)
 
 A development build talks plain `http://` to the LAN server, so Android needs cleartext traffic allowed
 (`expo-build-properties` with `android.usesCleartextTraffic`); Expo Go already allows it.
-
-## Not done yet
-
-- Supabase: the spec reads jobs from Supabase (realtime Inbox) once `server/store.py` writes them; until then the
-  Inbox polls `GET /jobs`.

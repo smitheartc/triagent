@@ -1,17 +1,17 @@
 import { router, Stack } from 'expo-router';
 import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
-import { api, API_URL } from '../api';
+import { API_URL } from '../api';
 import type { JobSummary } from '../contracts';
 import { ago, pct } from '../format';
 import { mono, usePalette } from '../theme';
 import { Badge, Empty, Loading, Notice, PriorityBadge, s, StatusBadge } from '../ui';
-import { usePoll } from '../usePoll';
+import { type InboxSource, useInbox } from '../useInbox';
 
-/** Inbox: GET /jobs, newest first, refreshed every 3 s while on screen. */
+/** Inbox, newest first: Supabase with a realtime subscription when configured, else GET /jobs every 3 s. */
 export default function Inbox() {
   const p = usePalette();
-  const { data: jobs, error, refresh, refreshing } = usePoll(api.jobs, () => 3000);
+  const { jobs, error, source, refresh, refreshing } = useInbox();
 
   return (
     <>
@@ -43,6 +43,8 @@ export default function Inbox() {
                 {`${error.message}\nServer: ${API_URL}. Start server/fake_server.py, or set EXPO_PUBLIC_API_URL.`}
               </Notice>
             </View>
+          ) : jobs ? (
+            <SourceLine source={source} />
           ) : undefined
         }
         ListEmptyComponent={
@@ -90,3 +92,21 @@ function JobRow({ job }: { job: JobSummary }) {
 const row = StyleSheet.create({
   card: { borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 14, gap: 8 },
 });
+
+const SOURCE_TEXT: Record<InboxSource, string> = {
+  realtime: 'Live: updates from Supabase as they happen',
+  supabase: 'From Supabase, connecting to live updates…',
+  server: `From the server, every 3 s`,
+};
+
+/** One line above the list saying where the rows come from, so a stale phone is easy to spot. */
+function SourceLine({ source }: { source: InboxSource }) {
+  const p = usePalette();
+  const color = source === 'realtime' ? p.green : p.muted;
+  return (
+    <View style={[s.row, { marginBottom: 10 }]}>
+      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
+      <Text style={[s.small, { color: p.muted }]}>{SOURCE_TEXT[source]}</Text>
+    </View>
+  );
+}
