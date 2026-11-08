@@ -1,6 +1,27 @@
+# Scratch output: answer keys, catalogs, job traces (t/jobs), scores (t/scores), demo logs (t/demo), tuning runs
 t/
+
+# Secrets: server/.env and any other env file; the example stays tracked
 .env
+.env.*
+!.env.example
+
+# Simulator output written outside t/ by hand-run dcsim commands (sim/event_catalog.json is tracked on purpose)
+*.ndjson
+/scenario.json
+/event_catalog.json
+/sim/scenario.json
+
+# Investigation traces and job JSON written outside t/ (TRIAGENT_JOBS_DIR, scorer --out-dir)
+/jobs/
+server/jobs/
+/traces/
+server/traces/
+*.trace.json
+
+# Python
 .venv/
+venv/
 __pycache__/
 *.pyc
 .pytest_cache/

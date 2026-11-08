@@ -401,7 +401,7 @@ def markdown(rows: list[dict[str, Any]], meta: dict[str, Any]) -> str:
              f"- investigator `{meta['models'].get('investigator')}`, critic `{meta['models'].get('critic')}`",
              f"- answer key `{meta['answer_key']}` (dcsim seed {meta['sim_seed']}), runs per scenario: "
              f"{meta['runs']}, model seed base {meta['seed']}", "",
-             "Final pipeline output (investigator, critic, one retry on fail). Tool calls, seconds and tokens "
+             "Final pipeline output (investigator, critic review, retry only if on). Tool calls, seconds and tokens "
              "include the critic and the retry.", "",
              "| scenario | run | cause entity | category | chain overlap | red herring cited | confidence "
              "| tool calls | seconds | tokens | critic | pass |",

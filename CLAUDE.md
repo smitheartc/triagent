@@ -34,9 +34,13 @@ Claude (the coding assistant) is fine for writing code and docs. It is not allow
 ```
 triagent/
   CLAUDE.md              this file
+  README.md              fresh-laptop quickstart: clone, set the NVIDIA key, ./demo.sh
+  demo.sh                one scenario streamed at 60x into namespace demo, server + jira_mock, follows it to the comment
+  Makefile               demo, score, test, es, kibana, tools-check shortcuts
   escluster/
     docker-compose.yml   single-node Elasticsearch 8.17 + Kibana for every teammate
     es_setup.py          ILM + component/index templates + Kibana data views, idempotent, stdlib only
+    kibana_demo.py       two judge dashboards (whole data center; the rack B03 power incident), stdlib only
   sim/
     dcsim.py             simulator (rules in sim/CLAUDE.md, read it before touching the simulator)
     CLAUDE.md            simulator rules; authoritative for everything under sim/
@@ -69,9 +73,12 @@ triagent/
 ## Running it
 
 ```bash
+# whole path for one incident (Docker ES, server, jira_mock, 60x stream, waits for the ticket comment)
+./demo.sh [scenario]                                  # ./demo.sh stop; logs in t/demo/
+
 # cluster
 docker compose up -d                                  # ES :9200, Kibana :5601, security off, local only
-python3 sim/es_setup.py --es-url http://localhost:9200 --kibana-url http://localhost:5601 --verify
+python3 escluster/es_setup.py --es-url http://localhost:9200 --kibana-url http://localhost:5601 --verify
 python3 sim/dcsim.py --scenario all --seed 7 --duration 12h --es-url http://localhost:9200 \
     --answer-key t/scenario.json --catalog t/event_catalog.json --out ''
 
@@ -95,7 +102,7 @@ python3 sim/dcsim.py --scenario bad_optic --stream --speed 60 --es-url http://lo
 cd app && npx expo start
 ```
 
-Reset between runs: `python3 sim/es_setup.py --es-url http://localhost:9200 --reset` then re-ingest. On WSL2 set `vm.max_map_count=262144` first.
+Reset between runs: `python3 escluster/es_setup.py --es-url http://localhost:9200 --reset` then re-ingest. On WSL2 set `vm.max_map_count=262144` first.
 
 ## Pipeline
 
@@ -215,7 +222,7 @@ JSON (`python3 server/contracts.py --sql`). Screens, in build order: Inbox, Inci
 
 ## Verification before calling anything done
 
-1. `python3 sim/es_setup.py --es-url ... --verify` passes (every index name resolves to a dcsim template).
+1. `python3 escluster/es_setup.py --es-url ... --verify` passes (every index name resolves to a dcsim template).
 2. `python3 server/scorer.py --runs 1` completes for all nine scenarios with no exceptions, and no run cites a red herring as the cause.
 3. One full path by hand: ingest, webhook from jira_mock, report stored, ticket comment present, app shows it.
 4. A tool-schema smoke test: call each tool directly with a known ticket (no LLM) and check it returns rows. Do this first when something breaks; most "the agent is wrong" bugs are tool bugs.
