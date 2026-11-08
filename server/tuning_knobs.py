@@ -22,7 +22,7 @@ import os
 KNOBS: dict[str, object] = {
     "max_tool_calls": 20,
     "critic_enabled": True,
-    "critic_retry": 1,
+    "critic_retry": 0,
     "thinking_investigator": True,
     "thinking_critic": True,
     "temperature": 1.0,
