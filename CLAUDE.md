@@ -51,6 +51,7 @@ triagent/
     tools.py             ES tool implementations and their JSON schemas
     topology.py          entity -> neighbors, built from labels.* aggregations (no dcsim import)
     investigator.py      tool-use loop, max 20 calls
+    tuning_knobs.py      tunable constants (tool budget, critic on/retry, thinking, temperature); env still wins
     critic.py            no-tools review of a report against its cited docs
     remediate.py         runbook-grounded remediation
     scorer.py            report vs scenario.json (stdlib only)
@@ -102,7 +103,8 @@ Reset between runs: `python3 sim/es_setup.py --es-url http://localhost:9200 --re
 ticket doc in ES  ->  jira_mock (or real Jira/SNOW webhook)  ->  POST /webhook
   -> orchestrator enqueues job, streams steps over SSE
   -> investigator (Nemotron Super + ES tools, <= 20 calls)  ->  report JSON
-  -> critic (Nemotron Nano, no tools, re-fetches cited docs)  ->  pass | fail + corrections (one retry)
+  -> critic (Nemotron Nano, no tools, re-fetches cited docs)  ->  pass | fail + notes attached to the report
+     (an investigator retry exists behind tuning_knobs critic_retry=1; off by default)
   -> remediate (Nemotron Nano + runbooks/<category>.md)
   -> store report (Supabase), patch ticket comment, push notification
 scorer: report vs scenario.json -> accuracy table
@@ -238,7 +240,8 @@ JSON (`python3 server/contracts.py --sql`). Screens, in build order: Inbox, Inci
 3. `llm.py` with the Nemotron smoke test (tool calls come back structured; text fallback kept): done
 4. `investigator.py` loop: done
 5. `scorer.py`, run all nine: done (`--runs 3`: 20/27 before the critic)
-6. `critic.py`, measure the change in the table: done (18/27 after; the retry costs more than it fixes)
+6. `critic.py`, measure the change in the table: done (18/27 after; the retry costs more than it fixes, so
+   `server/tuning_knobs.py` sets `critic_retry` 0: a failed review keeps the report with the critic's notes attached)
 7. `runbooks/` and `remediate.py`: done (`remediate_check.py` passes for all ten categories)
 8. `jira_mock.py` and ticket patching: done (a fresh ingest ends with the report as a comment on the mock issue)
 9. `app/` in the screen order above: built against `fake_server.py`, all five screens plus push registration (`app/README.md`); Supabase reads wait on `store.py`
