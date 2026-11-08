@@ -46,6 +46,7 @@ from typing import Any, AsyncIterator
 import httpx
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 import investigator
@@ -444,6 +445,8 @@ async def health(request: Request) -> dict[str, Any]:
 def create_app(settings: Settings | None = None, pipeline: Any = None) -> FastAPI:
     """A Triagent app. fake_server.py builds one with the scripted pipeline; tests swap state.pipeline."""
     application = FastAPI(title="Triagent", version="0.1.0")
+    # The app's web build is served from another origin (Expo on :8081). No auth on this API (LAN demo), so any origin.
+    application.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
     application.include_router(router)
     application.state.registry = Registry()
     application.state.settings = settings or Settings.from_env()
