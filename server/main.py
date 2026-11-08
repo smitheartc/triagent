@@ -295,7 +295,7 @@ def push_finished(job: Job, settings: Settings) -> None:
         tokens += [d["expo_push_token"] for d in store.default().devices()]
     except Exception as exc:  # noqa: BLE001
         log.warning("supabase: devices not read, pushing to the %d in memory: %s", len(tokens), exc)
-    notify.push(job, tokens)
+    notify.push(job, list(dict.fromkeys(tokens)))   # a token registered both ways gets one push
 
 
 def _bullets(items: list[str], empty: str = "- none") -> str:

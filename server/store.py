@@ -4,14 +4,14 @@ Talks to Supabase's REST API (PostgREST) with httpx, which the server already de
 would add a dependency for three HTTP calls. Off (every call a no-op) until SUPABASE_URL and SUPABASE_SECRET_KEY
 (or the legacy name SUPABASE_SERVICE_KEY) are set in server/.env.
 
-    python3 server/store.py --sql      # paste into the Supabase SQL Editor once (jobs table + devices + read policy)
+    python3 server/store.py --sql      # paste into the Supabase SQL Editor once (jobs table + devices + policies)
     python3 server/store.py --check    # one round trip: insert, read back and delete a probe row
 
 Who reads what
   server  writes jobs rows on every status change (save), reads them back at startup (load_jobs), and keeps device
           tokens in the devices table (save_device / devices) so pushes survive a server restart.
-  app     reads jobs with the anon key (select policy below; realtime on jobs from contracts.SUPABASE_JOBS_SQL).
-          It never writes: actions and push registration go through the server's HTTP API.
+  app     reads jobs with the anon key (select policy below; realtime on jobs from contracts.SUPABASE_JOBS_SQL),
+          and inserts its own push token into devices (insert-only policy below). Actions go through the server.
 
 The devices table and the row-level security policy live here, not in contracts.py: the app never sees the devices
 table, and contracts.py stays frozen while the app is built against it.
@@ -48,7 +48,12 @@ create table if not exists devices (
   platform         text,
   registered       timestamptz not null default now()
 );
-alter table devices enable row level security;   -- no policy: only the server's service key reaches it
+alter table devices enable row level security;
+-- The app registers its own push token (src/push.ts), so a phone off the server's network still gets pushes.
+-- Insert only: no select policy, so the publishable key can't read tokens back; the server reads with its secret key.
+grant insert on devices to anon;
+drop policy if exists "app registers push tokens" on devices;
+create policy "app registers push tokens" on devices for insert to anon with check (true);
 """
 
 
