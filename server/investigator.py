@@ -21,6 +21,7 @@ from typing import Any
 from pydantic import ValidationError
 
 import llm
+import tuning_knobs
 from contracts import Report
 from tools import ANSWER_SCHEMA, ASK_TOOL_SCHEMAS, SUBMIT_SCHEMA, TOOL_SCHEMAS
 
@@ -101,7 +102,8 @@ class _Loop:
         self.messages: list[dict[str, Any]] = []
 
     def chat(self, tools: list[dict[str, Any]]) -> llm.ChatResult:
-        res = llm.chat(self.messages, tools=tools, model=self.model, role="investigator", thinking=True,
+        res = llm.chat(self.messages, tools=tools, model=self.model, role="investigator",
+                       thinking=tuning_knobs.thinking_investigator(),
                        max_tokens=MAX_TOKENS, seed=self.seed, trace=lambda d: self.trace.add("llm", **d))
         self.messages.append(res.assistant_message())
         if res.text:

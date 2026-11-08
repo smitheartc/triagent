@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import llm
+import tuning_knobs
 
 log = logging.getLogger("triagent.critic")
 
@@ -162,7 +163,7 @@ def run(report: dict[str, Any], ticket: dict[str, Any], es_tools: Any, trace: An
     model_out: dict[str, Any] | None = None
     note = None
     try:
-        res = llm.chat(messages, role="critic", thinking=True, max_tokens=MAX_TOKENS,
+        res = llm.chat(messages, role="critic", thinking=tuning_knobs.thinking_critic(), max_tokens=MAX_TOKENS,
                        trace=lambda d: trace.add("llm", **d))
         model_out = parse_verdict(res.text)
         if model_out is None:

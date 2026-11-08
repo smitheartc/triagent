@@ -71,6 +71,7 @@ import investigator
 import llm
 import notify
 import store
+import tuning_knobs
 import jira_mock
 from contracts import (DEFAULT_ASK_MAX_CALLS, Action, ActionRequest, AskRequest, DeviceRegistration, WebhookPayload,
                        summarize)
@@ -103,6 +104,7 @@ class Settings:
     max_tool_calls: int
     jobs_dir: Path
     critic_enabled: bool = True
+    critic_retry: int = 1                 # tuning_knobs: 1 = one investigator retry on a failed review; 0 = none
     scores_dir: Path = REPO_ROOT / "t" / "scores"
     fake: bool = False                    # set by fake_server.py
     ticket_backend: str = "mock"          # TICKET_BACKEND: mock | none | jira | snow
@@ -122,9 +124,10 @@ class Settings:
             model_investigator=llm.model_for("investigator"),
             model_critic=llm.model_for("critic"),
             model_small=llm.model_for("small"),
-            max_tool_calls=int(os.environ.get("TRIAGENT_MAX_TOOL_CALLS", "20")),
+            max_tool_calls=tuning_knobs.max_tool_calls(),
             jobs_dir=Path(os.environ.get("TRIAGENT_JOBS_DIR") or REPO_ROOT / "t" / "jobs"),
-            critic_enabled=os.environ.get("TRIAGENT_CRITIC", "1") != "0",
+            critic_enabled=tuning_knobs.critic_enabled(),
+            critic_retry=tuning_knobs.critic_retry(),
             ticket_backend=(os.environ.get("TICKET_BACKEND") or "mock").strip().lower(),
             jira_mock_url=os.environ.get("JIRA_MOCK_URL") or "http://localhost:8082",
             public_url=(os.environ.get("TRIAGENT_PUBLIC_URL") or "").rstrip("/"),
@@ -420,7 +423,10 @@ async def run_pipeline(job: Job, settings: Settings) -> None:
             job.set_status("critic")
             first = await asyncio.to_thread(critic.run, job.report, ticket, es, job.trace)
             job.critic = {"first": first, "final": first, "retried": False}
-            if first["verdict"] == "fail":
+            if first["verdict"] == "fail" and settings.critic_retry < 1:
+                # No retry: keep the report, with the reviewer's failed checks appended for the on-call engineer.
+                job.report = with_review_notes(job.report, first)
+            elif first["verdict"] == "fail":
                 # One investigator retry with the corrections appended, then one more review. No second retry.
                 job.trace.phase = "retry"
                 job.set_status("running", retry=True)

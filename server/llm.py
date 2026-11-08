@@ -27,6 +27,8 @@ from typing import Any, Callable
 import openai
 from openai import OpenAI
 
+import tuning_knobs
+
 log = logging.getLogger("triagent.llm")
 
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
@@ -207,7 +209,7 @@ def chat(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = No
     client = _client(os.environ.get("NVIDIA_BASE_URL") or DEFAULT_BASE_URL, api_key)
 
     kwargs: dict[str, Any] = {
-        "model": model, "messages": messages, "temperature": 1.0, "top_p": 0.95, "max_tokens": max_tokens,
+        "model": model, "messages": messages, "temperature": tuning_knobs.temperature(), "top_p": 0.95, "max_tokens": max_tokens,
         "extra_body": {"chat_template_kwargs": {"enable_thinking": thinking}},
     }
     if tools:
