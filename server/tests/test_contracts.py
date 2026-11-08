@@ -43,7 +43,7 @@ def test_real_pipeline_job_matches_contract(monkeypatch, tmp_path):
     reviews = iter([_review("fail"), _review("pass")])
     monkeypatch.setattr(investigator, "run", fake_investigate)
     monkeypatch.setattr(critic, "run", lambda *a: next(reviews))
-    settings = dataclasses.replace(main.Settings.from_env(), jobs_dir=tmp_path)
+    settings = dataclasses.replace(main.Settings.from_env(), jobs_dir=tmp_path, critic_retry=1)  # the retry shape
 
     async def go():
         job = main.Job(job_id="job-x", ticket=dict(C.Ticket(**TICKET).model_dump()), loop=asyncio.get_running_loop())

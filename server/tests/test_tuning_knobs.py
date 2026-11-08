@@ -15,7 +15,7 @@ TICKET = {"ticket_id": "INC1", "created": "2026-11-07T11:05:00Z", "title": "auth
 
 
 def test_knobs_hold_todays_values():
-    assert KNOBS == {"max_tool_calls": 20, "critic_enabled": True, "critic_retry": 1, "thinking_investigator": True,
+    assert KNOBS == {"max_tool_calls": 20, "critic_enabled": True, "critic_retry": 0, "thinking_investigator": True,
                      "thinking_critic": True, "temperature": 1.0}
     assert 8 <= KNOBS["max_tool_calls"] <= 20 and 0.6 <= KNOBS["temperature"] <= 1.0
 

@@ -114,7 +114,8 @@ def test_pipeline_retries_once_with_feedback(monkeypatch, tmp_path):
     monkeypatch.setattr(investigator, "run", fake_investigate)
     monkeypatch.setattr(critic, "run", lambda *a: next(verdicts))
     settings = main.Settings.from_env()
-    settings = main.Settings(**{**settings.__dict__, "jobs_dir": tmp_path, "critic_enabled": True})
+    settings = main.Settings(**{**settings.__dict__, "jobs_dir": tmp_path, "critic_enabled": True,
+                                       "critic_retry": 1})
 
     async def go():
         job = main.Job(job_id="job-t", ticket={**TICKET, "labels": {}}, loop=asyncio.get_running_loop())
