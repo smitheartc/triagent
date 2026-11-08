@@ -327,10 +327,19 @@ def main() -> None:
     kb = Kibana(args.kibana_url, args.api_key, args.user)
     if not args.keep_timezone:
         kb.call("POST", "/api/kibana/settings", json.dumps({"changes": {"dateFormat:tz": "UTC"}}).encode())
-    for vid, (name, title) in {**DATA_VIEWS, **EXTRA_VIEWS}.items():
-        kb.data_view(vid, name, title.format(ns=args.namespace))
+    # dal1 keeps the shared data view ids es_setup.py creates. Any other namespace gets its own (dcsim-all-demo, ...),
+    # so building its dashboards never repoints the dal1 ones.
+    views = {**DATA_VIEWS, **EXTRA_VIEWS}
+    suffix = "" if args.namespace == "dal1" else f"-{args.namespace}"
+    for vid, (name, title) in views.items():
+        kb.data_view(vid + suffix, f"{name} ({args.namespace})" if suffix else name, title.format(ns=args.namespace))
     objects = build(args.namespace, args.rack.upper(), args.pdu, args.day_from, args.day_to,
                     args.incident_from, args.incident_to)
+    if suffix:
+        text = json.dumps(objects)
+        for vid in views:
+            text = text.replace(f'"{vid}"', f'"{vid}{suffix}"')
+        objects = json.loads(text)
     res = kb.import_objects(objects)
     if not res.get("success"):
         sys.exit("import failed: " + json.dumps(res.get("errors"), indent=1)[:3000])
