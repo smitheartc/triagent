@@ -1,0 +1,1576 @@
+{
+  "$defs": {
+    "Action": {
+      "properties": {
+        "type": {
+          "enum": [
+            "approve",
+            "escalate",
+            "ask"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "by": {
+          "default": "demo",
+          "title": "By",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "question": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Question"
+        },
+        "ts": {
+          "title": "Ts",
+          "type": "string"
+        },
+        "state": {
+          "default": "recorded",
+          "enum": [
+            "recorded",
+            "queued",
+            "not_implemented"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "ts"
+      ],
+      "title": "Action",
+      "type": "object"
+    },
+    "ActionRequest": {
+      "properties": {
+        "type": {
+          "enum": [
+            "approve",
+            "escalate",
+            "ask"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "by": {
+          "default": "demo",
+          "title": "By",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "question": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Question"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "ActionRequest",
+      "type": "object"
+    },
+    "ChainStep": {
+      "properties": {
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "what": {
+          "title": "What",
+          "type": "string"
+        },
+        "why_it_matters": {
+          "default": "",
+          "title": "Why It Matters",
+          "type": "string"
+        }
+      },
+      "required": [
+        "timestamp",
+        "event_id",
+        "what"
+      ],
+      "title": "ChainStep",
+      "type": "object"
+    },
+    "CriticCheck": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "detail": {
+          "default": "",
+          "title": "Detail",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "code",
+            "model",
+            "missing"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "source"
+      ],
+      "title": "CriticCheck",
+      "type": "object"
+    },
+    "CriticResult": {
+      "description": "Job.critic. On a failed first review the investigator retries once; kept says which report was returned.",
+      "properties": {
+        "first": {
+          "$ref": "#/$defs/CriticReview"
+        },
+        "final": {
+          "$ref": "#/$defs/CriticReview"
+        },
+        "retried": {
+          "title": "Retried",
+          "type": "boolean"
+        },
+        "kept": {
+          "anyOf": [
+            {
+              "enum": [
+                "initial",
+                "retry"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kept"
+        }
+      },
+      "required": [
+        "first",
+        "final",
+        "retried"
+      ],
+      "title": "CriticResult",
+      "type": "object"
+    },
+    "CriticReview": {
+      "additionalProperties": true,
+      "description": "One critic pass. checks has exactly the seven CRITIC_CHECKS keys.",
+      "properties": {
+        "verdict": {
+          "enum": [
+            "pass",
+            "fail"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        },
+        "failed": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Failed",
+          "type": "array"
+        },
+        "checks": {
+          "additionalProperties": {
+            "$ref": "#/$defs/CriticCheck"
+          },
+          "title": "Checks",
+          "type": "object"
+        },
+        "corrections": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Corrections",
+          "type": "array"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "docs_checked": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Docs Checked"
+        },
+        "docs_cited": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Docs Cited"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "verdict"
+      ],
+      "title": "CriticReview",
+      "type": "object"
+    },
+    "DeviceRegistration": {
+      "properties": {
+        "expo_push_token": {
+          "title": "Expo Push Token",
+          "type": "string"
+        },
+        "user": {
+          "default": "demo",
+          "title": "User",
+          "type": "string"
+        },
+        "platform": {
+          "anyOf": [
+            {
+              "enum": [
+                "ios",
+                "android",
+                "web"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Platform"
+        }
+      },
+      "required": [
+        "expo_push_token"
+      ],
+      "title": "DeviceRegistration",
+      "type": "object"
+    },
+    "EnqueueResponse": {
+      "properties": {
+        "job_id": {
+          "title": "Job Id",
+          "type": "string"
+        },
+        "ticket_id": {
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "critic",
+            "remediating",
+            "done",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "duplicate": {
+          "default": false,
+          "title": "Duplicate",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "job_id",
+        "ticket_id",
+        "status"
+      ],
+      "title": "EnqueueResponse",
+      "type": "object"
+    },
+    "Health": {
+      "additionalProperties": true,
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "fake": {
+          "default": false,
+          "title": "Fake",
+          "type": "boolean"
+        },
+        "elasticsearch": {
+          "additionalProperties": true,
+          "title": "Elasticsearch",
+          "type": "object"
+        },
+        "nvidia_keys_set": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "title": "Nvidia Keys Set",
+          "type": "object"
+        },
+        "models": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Models",
+          "type": "object"
+        },
+        "max_tool_calls": {
+          "default": 20,
+          "title": "Max Tool Calls",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "title": "Health",
+      "type": "object"
+    },
+    "Job": {
+      "description": "GET /jobs/{job_id} and t/jobs/<job_id>.json. Times are Unix epoch seconds (floats).",
+      "properties": {
+        "job_id": {
+          "title": "Job Id",
+          "type": "string"
+        },
+        "ticket_id": {
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "critic",
+            "remediating",
+            "done",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "ticket": {
+          "$ref": "#/$defs/Ticket"
+        },
+        "report": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Report"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "report_initial": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Report"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "critic": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CriticResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "remediation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Remediation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "actions": {
+          "items": {
+            "$ref": "#/$defs/Action"
+          },
+          "title": "Actions",
+          "type": "array"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "created": {
+          "title": "Created",
+          "type": "number"
+        },
+        "finished": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished"
+        },
+        "initial_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Initial Seconds"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed"
+        },
+        "totals": {
+          "$ref": "#/$defs/Totals"
+        },
+        "totals_initial": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Totals"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "trace": {
+          "items": {
+            "$ref": "#/$defs/TraceEntry"
+          },
+          "title": "Trace",
+          "type": "array"
+        }
+      },
+      "required": [
+        "job_id",
+        "ticket_id",
+        "status",
+        "ticket",
+        "created",
+        "totals"
+      ],
+      "title": "Job",
+      "type": "object"
+    },
+    "JobSummary": {
+      "description": "GET /jobs rows, newest first. Also the columns of the Supabase jobs table.",
+      "properties": {
+        "job_id": {
+          "title": "Job Id",
+          "type": "string"
+        },
+        "ticket_id": {
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "priority": {
+          "title": "Priority",
+          "type": "string"
+        },
+        "service": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "critic",
+            "remediating",
+            "done",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "enum": [
+                "cooling",
+                "power",
+                "network",
+                "storage",
+                "memory",
+                "deploy",
+                "config",
+                "certificate",
+                "security",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Category"
+        },
+        "entity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "critic_verdict": {
+          "anyOf": [
+            {
+              "enum": [
+                "pass",
+                "fail"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Critic Verdict"
+        },
+        "created": {
+          "title": "Created",
+          "type": "number"
+        },
+        "finished": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished"
+        }
+      },
+      "required": [
+        "job_id",
+        "ticket_id",
+        "title",
+        "priority",
+        "status",
+        "created"
+      ],
+      "title": "JobSummary",
+      "type": "object"
+    },
+    "PushMessage": {
+      "description": "What notify.py sends to Expo when a job finishes. data.job_id deep-links to Incident detail.",
+      "properties": {
+        "to": {
+          "title": "To",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "body": {
+          "title": "Body",
+          "type": "string"
+        },
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        }
+      },
+      "required": [
+        "to",
+        "title",
+        "body",
+        "data"
+      ],
+      "title": "PushMessage",
+      "type": "object"
+    },
+    "RejectedCandidate": {
+      "properties": {
+        "what": {
+          "title": "What",
+          "type": "string"
+        },
+        "event_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Event Ids",
+          "type": "array"
+        },
+        "why_rejected": {
+          "title": "Why Rejected",
+          "type": "string"
+        }
+      },
+      "required": [
+        "what",
+        "why_rejected"
+      ],
+      "title": "RejectedCandidate",
+      "type": "object"
+    },
+    "Remediation": {
+      "additionalProperties": true,
+      "description": "Runbook-grounded steps. Every immediate step names the entity type and a command or console action.",
+      "properties": {
+        "covered": {
+          "title": "Covered",
+          "type": "boolean"
+        },
+        "immediate": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Immediate",
+          "type": "array"
+        },
+        "verify": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Verify",
+          "type": "array"
+        },
+        "prevent": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Prevent",
+          "type": "array"
+        },
+        "rollback_risk": {
+          "title": "Rollback Risk",
+          "type": "string"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Category"
+        },
+        "runbook": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runbook"
+        },
+        "entity_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entity Types",
+          "type": "array"
+        },
+        "source": {
+          "default": "model",
+          "enum": [
+            "model",
+            "runbook"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "covered",
+        "immediate",
+        "verify",
+        "prevent",
+        "rollback_risk"
+      ],
+      "title": "Remediation",
+      "type": "object"
+    },
+    "Report": {
+      "properties": {
+        "problem": {
+          "title": "Problem",
+          "type": "string"
+        },
+        "root_cause": {
+          "$ref": "#/$defs/RootCause"
+        },
+        "causal_chain": {
+          "items": {
+            "$ref": "#/$defs/ChainStep"
+          },
+          "title": "Causal Chain",
+          "type": "array"
+        },
+        "rejected_candidates": {
+          "items": {
+            "$ref": "#/$defs/RejectedCandidate"
+          },
+          "title": "Rejected Candidates",
+          "type": "array"
+        },
+        "affected": {
+          "additionalProperties": true,
+          "title": "Affected",
+          "type": "object"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "open_questions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Open Questions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "problem",
+        "root_cause",
+        "confidence"
+      ],
+      "title": "Report",
+      "type": "object"
+    },
+    "RootCause": {
+      "properties": {
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "cooling",
+            "power",
+            "network",
+            "storage",
+            "memory",
+            "deploy",
+            "config",
+            "certificate",
+            "security",
+            "unknown"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "entity": {
+          "title": "Entity",
+          "type": "string"
+        },
+        "entity_type": {
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "identifiers": {
+          "additionalProperties": true,
+          "title": "Identifiers",
+          "type": "object"
+        },
+        "event_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Event Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "summary",
+        "category",
+        "entity",
+        "entity_type"
+      ],
+      "title": "RootCause",
+      "type": "object"
+    },
+    "SSETerminal": {
+      "properties": {
+        "job_id": {
+          "title": "Job Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "done",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "totals": {
+          "$ref": "#/$defs/Totals"
+        }
+      },
+      "required": [
+        "job_id",
+        "status",
+        "totals"
+      ],
+      "title": "SSETerminal",
+      "type": "object"
+    },
+    "ScoreRow": {
+      "additionalProperties": true,
+      "description": "One scorer row (scenario x run). Scorer output may carry more fields.",
+      "properties": {
+        "scenario": {
+          "title": "Scenario",
+          "type": "string"
+        },
+        "run": {
+          "title": "Run",
+          "type": "integer"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "passed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Passed"
+        },
+        "entity_ok": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity Ok"
+        },
+        "category_ok": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Category Ok"
+        },
+        "jaccard": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Jaccard"
+        },
+        "red_herring": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Red Herring"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "tool_calls": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Calls"
+        },
+        "seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seconds"
+        },
+        "tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tokens"
+        },
+        "critic_first": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Critic First"
+        },
+        "retried": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retried"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before"
+        }
+      },
+      "required": [
+        "scenario",
+        "run",
+        "status"
+      ],
+      "title": "ScoreRow",
+      "type": "object"
+    },
+    "ScoreRun": {
+      "description": "t/scores/<stamp>.json and GET /scores/latest.",
+      "properties": {
+        "meta": {
+          "additionalProperties": true,
+          "title": "Meta",
+          "type": "object"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/ScoreRow"
+          },
+          "title": "Rows",
+          "type": "array"
+        }
+      },
+      "required": [
+        "meta",
+        "rows"
+      ],
+      "title": "ScoreRun",
+      "type": "object"
+    },
+    "Ticket": {
+      "description": "Body of POST /webhook and /investigate. jira_mock builds it from the INC-CREATED doc; real Jira/SNOW too.",
+      "properties": {
+        "ticket_id": {
+          "minLength": 1,
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "priority": {
+          "default": "P3",
+          "title": "Priority",
+          "type": "string"
+        },
+        "created": {
+          "title": "Created",
+          "type": "string"
+        },
+        "service": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service"
+        },
+        "host": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host"
+        },
+        "labels": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Labels",
+          "type": "object"
+        },
+        "namespace": {
+          "default": "dal1",
+          "title": "Namespace",
+          "type": "string"
+        },
+        "source_event_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Event Id"
+        }
+      },
+      "required": [
+        "ticket_id",
+        "title",
+        "created"
+      ],
+      "title": "Ticket",
+      "type": "object"
+    },
+    "Totals": {
+      "properties": {
+        "llm_calls": {
+          "default": 0,
+          "title": "Llm Calls",
+          "type": "integer"
+        },
+        "tool_calls": {
+          "default": 0,
+          "title": "Tool Calls",
+          "type": "integer"
+        },
+        "prompt_tokens": {
+          "default": 0,
+          "title": "Prompt Tokens",
+          "type": "integer"
+        },
+        "completion_tokens": {
+          "default": 0,
+          "title": "Completion Tokens",
+          "type": "integer"
+        },
+        "llm_latency_ms": {
+          "default": 0,
+          "title": "Llm Latency Ms",
+          "type": "integer"
+        }
+      },
+      "title": "Totals",
+      "type": "object"
+    },
+    "TraceEntry": {
+      "additionalProperties": true,
+      "description": "One trace line. seq is 1-based and gapless per job; SSE uses it as the event id.\n\nFields by kind (all optional beyond seq/ts/kind):\n  status       status, retry (bool), totals\n  llm          model, prompt_tokens, completion_tokens, latency_ms, tool_name\n  tool         call_no, name, arguments, result (JSON truncated to TRACE_RESULT_TRIM)\n  finding      finding, event_ids, finding_kind (symptom|precursor|candidate_cause|rejected|other)\n  verify       checked, dropped, unverified\n  assistant    text (the model's visible text for a turn)\n  critic       verdict, failed, corrections, note\n  remediation  runbook, covered, source, steps, note\n  action       action (Action)\n  info, error  message",
+      "properties": {
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "ts": {
+          "title": "Ts",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "status",
+            "llm",
+            "tool",
+            "finding",
+            "verify",
+            "info",
+            "error",
+            "assistant",
+            "critic",
+            "remediation",
+            "action"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "investigate",
+                "critic",
+                "retry",
+                "critic_retry"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Phase"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "queued",
+                "running",
+                "critic",
+                "remediating",
+                "done",
+                "failed"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "call_no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Call No"
+        },
+        "arguments": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Arguments"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "prompt_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Tokens"
+        },
+        "completion_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completion Tokens"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latency Ms"
+        },
+        "tool_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Name"
+        },
+        "finding": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finding"
+        },
+        "event_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event Ids"
+        },
+        "finding_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finding Kind"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "verdict": {
+          "anyOf": [
+            {
+              "enum": [
+                "pass",
+                "fail"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verdict"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "kind"
+      ],
+      "title": "TraceEntry",
+      "type": "object"
+    }
+  },
+  "title": "Triagent contracts"
+}

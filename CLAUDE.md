@@ -223,7 +223,7 @@ JSON (`python3 server/contracts.py --sql`). Screens, in build order: Inbox, Inci
 6. `critic.py`, measure the change in the table: done (18/27 after; the retry costs more than it fixes)
 7. `runbooks/` and `remediate.py`: done (`remediate_check.py` passes for all ten categories)
 8. `jira_mock.py` and ticket patching
-9. `app/` in the screen order above (can start now against `fake_server.py`)
+9. `app/` in the screen order above: built against `fake_server.py`, all five screens plus push registration (`app/README.md`); Supabase reads wait on `store.py`
 10. Real Jira/SNOW toggle, only if time remains
 
 Contracts (`server/contracts.py`), `fakes.py` and `fake_server.py` exist so steps 7 to 9 can be built in parallel.
