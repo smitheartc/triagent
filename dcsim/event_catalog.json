@@ -1,0 +1,832 @@
+{
+  "MET-BMC": {
+    "index": "metrics-bmc.sensors-dal1",
+    "data_stream.type": "metrics",
+    "data_stream.dataset": "bmc.sensors",
+    "event.kind": "metric",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "bmc-sensor-reading",
+    "count": 57600
+  },
+  "MET-HOST": {
+    "index": "metrics-system.host-dal1",
+    "data_stream.type": "metrics",
+    "data_stream.dataset": "system.host",
+    "event.kind": "metric",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "host-metrics",
+    "count": 57600
+  },
+  "MET-CRAC": {
+    "index": "metrics-facility.crac-dal1",
+    "data_stream.type": "metrics",
+    "data_stream.dataset": "facility.crac",
+    "event.kind": "metric",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "crac-reading",
+    "count": 1440
+  },
+  "MET-PDU": {
+    "index": "metrics-facility.pdu-dal1",
+    "data_stream.type": "metrics",
+    "data_stream.dataset": "facility.pdu",
+    "event.kind": "metric",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "pdu-reading",
+    "count": 14400
+  },
+  "MET-UPS": {
+    "index": "metrics-facility.ups-dal1",
+    "data_stream.type": "metrics",
+    "data_stream.dataset": "facility.ups",
+    "event.kind": "metric",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "ups-reading",
+    "count": 72
+  },
+  "MET-IFACE": {
+    "index": "metrics-network.interface-dal1",
+    "data_stream.type": "metrics",
+    "data_stream.dataset": "network.interface",
+    "event.kind": "metric",
+    "event.category": "network",
+    "event.type": "info",
+    "event.action": "interface-counters",
+    "count": 25920
+  },
+  "MET-APP": {
+    "index": "metrics-app.service-dal1",
+    "data_stream.type": "metrics",
+    "data_stream.dataset": "app.service",
+    "event.kind": "metric",
+    "event.category": "web",
+    "event.type": "info",
+    "event.action": "service-metrics",
+    "count": 2160
+  },
+  "MET-SMART": {
+    "index": "metrics-storage.smart-dal1",
+    "data_stream.type": "metrics",
+    "data_stream.dataset": "storage.smart",
+    "event.kind": "metric",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "smart-reading",
+    "count": 23040
+  },
+  "BMC-INLET-WARN": {
+    "index": "logs-bmc.sel-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "bmc.sel",
+    "event.kind": "event",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "inlet-temp-upper-noncritical",
+    "count": 0
+  },
+  "BMC-INLET-CRIT": {
+    "index": "logs-bmc.sel-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "bmc.sel",
+    "event.kind": "alert",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "inlet-temp-upper-critical",
+    "count": 0
+  },
+  "SYS-THERMAL-THROTTLE": {
+    "index": "logs-system.syslog-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "system.syslog",
+    "event.kind": "event",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "cpu-thermal-throttle",
+    "count": 0
+  },
+  "SYS-THERMAL-SHUTDOWN": {
+    "index": "logs-system.syslog-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "system.syslog",
+    "event.kind": "event",
+    "event.category": "host",
+    "event.type": "end",
+    "event.action": "thermal-shutdown",
+    "count": 0
+  },
+  "SYS-EDAC-CE": {
+    "index": "logs-system.syslog-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "system.syslog",
+    "event.kind": "event",
+    "event.category": "host",
+    "event.type": "error",
+    "event.action": "edac-corrected-memory-error",
+    "count": 9
+  },
+  "SYS-CRON": {
+    "index": "logs-system.syslog-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "system.syslog",
+    "event.kind": "event",
+    "event.category": "process",
+    "event.type": "info",
+    "event.action": "cron-job",
+    "count": 22
+  },
+  "SYS-NTP-SYNC": {
+    "index": "logs-system.syslog-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "system.syslog",
+    "event.kind": "event",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "ntp-sync",
+    "count": 17
+  },
+  "SYS-SYSTEMD": {
+    "index": "logs-system.syslog-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "system.syslog",
+    "event.kind": "event",
+    "event.category": "process",
+    "event.type": "info",
+    "event.action": "systemd-unit",
+    "count": 41
+  },
+  "SYS-BOOT": {
+    "index": "logs-system.syslog-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "system.syslog",
+    "event.kind": "event",
+    "event.category": "host",
+    "event.type": "start",
+    "event.action": "host-boot",
+    "count": 0
+  },
+  "SYS-IO-ERROR": {
+    "index": "logs-system.syslog-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "system.syslog",
+    "event.kind": "event",
+    "event.category": "host",
+    "event.type": "error",
+    "event.action": "block-io-error",
+    "count": 0
+  },
+  "SYS-FS-RO": {
+    "index": "logs-system.syslog-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "system.syslog",
+    "event.kind": "event",
+    "event.category": "file",
+    "event.type": "error",
+    "event.action": "filesystem-remount-ro",
+    "count": 0
+  },
+  "SYS-DISK-SPACE-WARN": {
+    "index": "logs-system.syslog-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "system.syslog",
+    "event.kind": "event",
+    "event.category": "file",
+    "event.type": "info",
+    "event.action": "disk-space-low",
+    "count": 0
+  },
+  "SYS-DISK-SPACE-CRIT": {
+    "index": "logs-system.syslog-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "system.syslog",
+    "event.kind": "event",
+    "event.category": "file",
+    "event.type": "error",
+    "event.action": "disk-space-critical",
+    "count": 0
+  },
+  "SYS-OOM-KILL": {
+    "index": "logs-system.syslog-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "system.syslog",
+    "event.kind": "event",
+    "event.category": "process",
+    "event.type": "end",
+    "event.action": "oom-kill",
+    "count": 0
+  },
+  "RAID-DISK-FAIL": {
+    "index": "logs-storage.raid-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "storage.raid",
+    "event.kind": "event",
+    "event.category": "host",
+    "event.type": "error",
+    "event.action": "raid-member-failed",
+    "count": 0
+  },
+  "RAID-REBUILD-START": {
+    "index": "logs-storage.raid-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "storage.raid",
+    "event.kind": "event",
+    "event.category": "host",
+    "event.type": "start",
+    "event.action": "raid-rebuild-start",
+    "count": 0
+  },
+  "RAID-REBUILD-PROGRESS": {
+    "index": "logs-storage.raid-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "storage.raid",
+    "event.kind": "event",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "raid-rebuild-progress",
+    "count": 0
+  },
+  "RAID-ARRAY-FAIL": {
+    "index": "logs-storage.raid-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "storage.raid",
+    "event.kind": "alert",
+    "event.category": "host",
+    "event.type": "error",
+    "event.action": "raid-array-failed",
+    "count": 0
+  },
+  "K8S-SCHEDULED": {
+    "index": "logs-k8s.events-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "k8s.events",
+    "event.kind": "event",
+    "event.category": "process",
+    "event.type": "info",
+    "event.action": "pod-scheduled",
+    "count": 39
+  },
+  "K8S-PULLED": {
+    "index": "logs-k8s.events-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "k8s.events",
+    "event.kind": "event",
+    "event.category": "process",
+    "event.type": "info",
+    "event.action": "image-pulled",
+    "count": 31
+  },
+  "K8S-STARTED": {
+    "index": "logs-k8s.events-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "k8s.events",
+    "event.kind": "event",
+    "event.category": "process",
+    "event.type": "start",
+    "event.action": "container-started",
+    "count": 32
+  },
+  "K8S-SCALED": {
+    "index": "logs-k8s.events-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "k8s.events",
+    "event.kind": "event",
+    "event.category": "process",
+    "event.type": "change",
+    "event.action": "replicaset-scaled",
+    "count": 0
+  },
+  "K8S-BACKOFF": {
+    "index": "logs-k8s.events-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "k8s.events",
+    "event.kind": "event",
+    "event.category": "process",
+    "event.type": "error",
+    "event.action": "container-backoff",
+    "count": 11
+  },
+  "K8S-NODE-NOTREADY": {
+    "index": "logs-k8s.events-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "k8s.events",
+    "event.kind": "event",
+    "event.category": "host",
+    "event.type": "end",
+    "event.action": "node-not-ready",
+    "count": 0
+  },
+  "K8S-NODE-READY": {
+    "index": "logs-k8s.events-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "k8s.events",
+    "event.kind": "event",
+    "event.category": "host",
+    "event.type": "start",
+    "event.action": "node-ready",
+    "count": 0
+  },
+  "K8S-EVICTED": {
+    "index": "logs-k8s.events-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "k8s.events",
+    "event.kind": "event",
+    "event.category": "process",
+    "event.type": "end",
+    "event.action": "pod-evicted",
+    "count": 0
+  },
+  "K8S-OOMKILLED": {
+    "index": "logs-k8s.events-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "k8s.events",
+    "event.kind": "event",
+    "event.category": "process",
+    "event.type": "end",
+    "event.action": "container-oomkilled",
+    "count": 0
+  },
+  "K8S-CRASHLOOP": {
+    "index": "logs-k8s.events-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "k8s.events",
+    "event.kind": "event",
+    "event.category": "process",
+    "event.type": "error",
+    "event.action": "crashloop-backoff",
+    "count": 0
+  },
+  "K8S-DISK-PRESSURE": {
+    "index": "logs-k8s.events-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "k8s.events",
+    "event.kind": "event",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "node-disk-pressure",
+    "count": 0
+  },
+  "K8S-CERT-RENEW-FAIL": {
+    "index": "logs-k8s.events-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "k8s.events",
+    "event.kind": "event",
+    "event.category": "configuration",
+    "event.type": "error",
+    "event.action": "certificate-renewal-failed",
+    "count": 0
+  },
+  "NET-XCVR-RX-LOW": {
+    "index": "logs-network.device-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "network.device",
+    "event.kind": "event",
+    "event.category": "network",
+    "event.type": "info",
+    "event.action": "transceiver-rx-power-low",
+    "count": 0
+  },
+  "NET-LINK-DOWN": {
+    "index": "logs-network.device-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "network.device",
+    "event.kind": "event",
+    "event.category": "network",
+    "event.type": "end",
+    "event.action": "link-down",
+    "count": 0
+  },
+  "NET-LINK-UP": {
+    "index": "logs-network.device-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "network.device",
+    "event.kind": "event",
+    "event.category": "network",
+    "event.type": "start",
+    "event.action": "link-up",
+    "count": 0
+  },
+  "NET-ERRDISABLE": {
+    "index": "logs-network.device-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "network.device",
+    "event.kind": "event",
+    "event.category": "network",
+    "event.type": "end",
+    "event.action": "port-err-disabled",
+    "count": 0
+  },
+  "NET-BGP-DOWN": {
+    "index": "logs-network.device-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "network.device",
+    "event.kind": "event",
+    "event.category": "network",
+    "event.type": "end",
+    "event.action": "bgp-session-down",
+    "count": 0
+  },
+  "NET-BGP-UP": {
+    "index": "logs-network.device-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "network.device",
+    "event.kind": "event",
+    "event.category": "network",
+    "event.type": "start",
+    "event.action": "bgp-session-up",
+    "count": 0
+  },
+  "LB-RELOAD": {
+    "index": "logs-network.lb-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "network.lb",
+    "event.kind": "event",
+    "event.category": "configuration",
+    "event.type": "change",
+    "event.action": "lb-config-reload",
+    "count": 1
+  },
+  "LB-QUEUE-HIGH": {
+    "index": "logs-network.lb-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "network.lb",
+    "event.kind": "event",
+    "event.category": "web",
+    "event.type": "info",
+    "event.action": "lb-backend-queue-high",
+    "count": 19
+  },
+  "LB-NO-SERVER": {
+    "index": "logs-network.lb-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "network.lb",
+    "event.kind": "event",
+    "event.category": "web",
+    "event.type": "error",
+    "event.action": "lb-no-server-available",
+    "count": 69
+  },
+  "LB-TLS-FAIL": {
+    "index": "logs-network.lb-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "network.lb",
+    "event.kind": "event",
+    "event.category": "network",
+    "event.type": "error",
+    "event.action": "lb-tls-handshake-failure",
+    "count": 0
+  },
+  "APP-ERROR": {
+    "index": "logs-app.logs-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "app.logs",
+    "event.kind": "event",
+    "event.category": "web",
+    "event.type": "error",
+    "event.action": "app-request-errors",
+    "count": 72
+  },
+  "APP-GC-WARN": {
+    "index": "logs-app.logs-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "app.logs",
+    "event.kind": "event",
+    "event.category": "process",
+    "event.type": "info",
+    "event.action": "app-gc-overhead",
+    "count": 0
+  },
+  "APP-OOM": {
+    "index": "logs-app.logs-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "app.logs",
+    "event.kind": "event",
+    "event.category": "process",
+    "event.type": "error",
+    "event.action": "app-out-of-memory",
+    "count": 0
+  },
+  "APP-DISK-FULL": {
+    "index": "logs-app.logs-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "app.logs",
+    "event.kind": "event",
+    "event.category": "file",
+    "event.type": "error",
+    "event.action": "app-write-no-space",
+    "count": 0
+  },
+  "AUTH-SSH-SUCCESS": {
+    "index": "logs-security.auth-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "security.auth",
+    "event.kind": "event",
+    "event.category": "authentication",
+    "event.type": "start",
+    "event.action": "ssh-login-success",
+    "count": 41
+  },
+  "AUTH-SSH-FAIL": {
+    "index": "logs-security.auth-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "security.auth",
+    "event.kind": "event",
+    "event.category": "authentication",
+    "event.type": "denied",
+    "event.action": "ssh-login-failure",
+    "count": 31
+  },
+  "AUTH-SUDO": {
+    "index": "logs-security.auth-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "security.auth",
+    "event.kind": "event",
+    "event.category": "process",
+    "event.type": "admin",
+    "event.action": "sudo-command",
+    "count": 21
+  },
+  "FW-DENY": {
+    "index": "logs-security.firewall-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "security.firewall",
+    "event.kind": "event",
+    "event.category": "network",
+    "event.type": "denied",
+    "event.action": "firewall-deny",
+    "count": 244
+  },
+  "FW-ALLOW": {
+    "index": "logs-security.firewall-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "security.firewall",
+    "event.kind": "event",
+    "event.category": "network",
+    "event.type": "allowed",
+    "event.action": "firewall-allow",
+    "count": 0
+  },
+  "FW-RULE-CHANGE": {
+    "index": "logs-security.firewall-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "security.firewall",
+    "event.kind": "event",
+    "event.category": "configuration",
+    "event.type": "change",
+    "event.action": "firewall-rule-change",
+    "count": 0
+  },
+  "FW-AUTOBLOCK": {
+    "index": "logs-security.firewall-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "security.firewall",
+    "event.kind": "event",
+    "event.category": "network",
+    "event.type": "denied",
+    "event.action": "firewall-auto-block",
+    "count": 1
+  },
+  "IAM-ROLE-CREATE": {
+    "index": "logs-security.iam-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "security.iam",
+    "event.kind": "event",
+    "event.category": "iam",
+    "event.type": "creation",
+    "event.action": "iam-role-created",
+    "count": 0
+  },
+  "IAM-POLICY-ATTACH": {
+    "index": "logs-security.iam-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "security.iam",
+    "event.kind": "event",
+    "event.category": "iam",
+    "event.type": "change",
+    "event.action": "iam-policy-attached",
+    "count": 0
+  },
+  "IDS-EXFIL": {
+    "index": "logs-security.alerts-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "security.alerts",
+    "event.kind": "alert",
+    "event.category": "intrusion_detection",
+    "event.type": "indicator",
+    "event.action": "ids-possible-exfiltration",
+    "count": 0
+  },
+  "CHG-CREATED": {
+    "index": "logs-change.management-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "change.management",
+    "event.kind": "event",
+    "event.category": "configuration",
+    "event.type": "creation",
+    "event.action": "change-created",
+    "count": 5
+  },
+  "CHG-APPROVED": {
+    "index": "logs-change.management-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "change.management",
+    "event.kind": "event",
+    "event.category": "configuration",
+    "event.type": "change",
+    "event.action": "change-approved",
+    "count": 5
+  },
+  "CHG-IMPLEMENTED": {
+    "index": "logs-change.management-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "change.management",
+    "event.kind": "event",
+    "event.category": "configuration",
+    "event.type": "change",
+    "event.action": "change-implemented",
+    "count": 5
+  },
+  "CHG-CLOSED": {
+    "index": "logs-change.management-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "change.management",
+    "event.kind": "event",
+    "event.category": "configuration",
+    "event.type": "end",
+    "event.action": "change-closed",
+    "count": 4
+  },
+  "CICD-DEPLOY-START": {
+    "index": "logs-cicd.deploy-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "cicd.deploy",
+    "event.kind": "event",
+    "event.category": "package",
+    "event.type": "start",
+    "event.action": "deploy-started",
+    "count": 4
+  },
+  "CICD-DEPLOY-SUCCESS": {
+    "index": "logs-cicd.deploy-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "cicd.deploy",
+    "event.kind": "event",
+    "event.category": "package",
+    "event.type": "installation",
+    "event.action": "deploy-succeeded",
+    "count": 4
+  },
+  "CICD-CONFIG-PUSH": {
+    "index": "logs-cicd.deploy-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "cicd.deploy",
+    "event.kind": "event",
+    "event.category": "configuration",
+    "event.type": "change",
+    "event.action": "config-pushed",
+    "count": 1
+  },
+  "FAC-CRAC-HIGH-PRESSURE": {
+    "index": "logs-facility.alarms-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "facility.alarms",
+    "event.kind": "alert",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "crac-high-head-pressure",
+    "count": 0
+  },
+  "FAC-CRAC-COMPRESSOR-TRIP": {
+    "index": "logs-facility.alarms-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "facility.alarms",
+    "event.kind": "alert",
+    "event.category": "host",
+    "event.type": "error",
+    "event.action": "crac-compressor-trip",
+    "count": 0
+  },
+  "FAC-SUPPLY-TEMP-HIGH": {
+    "index": "logs-facility.alarms-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "facility.alarms",
+    "event.kind": "alert",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "crac-supply-temp-high",
+    "count": 0
+  },
+  "FAC-PDU-LOAD-WARN": {
+    "index": "logs-facility.alarms-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "facility.alarms",
+    "event.kind": "alert",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "pdu-load-warning",
+    "count": 0
+  },
+  "FAC-PDU-LOAD-CRIT": {
+    "index": "logs-facility.alarms-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "facility.alarms",
+    "event.kind": "alert",
+    "event.category": "host",
+    "event.type": "error",
+    "event.action": "pdu-load-critical",
+    "count": 0
+  },
+  "FAC-PDU-FEED-OFFLINE": {
+    "index": "logs-facility.alarms-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "facility.alarms",
+    "event.kind": "alert",
+    "event.category": "host",
+    "event.type": "end",
+    "event.action": "pdu-feed-offline",
+    "count": 0
+  },
+  "FAC-PDU-FW-STALLED": {
+    "index": "logs-facility.alarms-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "facility.alarms",
+    "event.kind": "alert",
+    "event.category": "host",
+    "event.type": "error",
+    "event.action": "pdu-firmware-update-stalled",
+    "count": 0
+  },
+  "FAC-PDU-BREAKER-TRIP": {
+    "index": "logs-facility.alarms-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "facility.alarms",
+    "event.kind": "alert",
+    "event.category": "host",
+    "event.type": "end",
+    "event.action": "pdu-breaker-trip",
+    "count": 0
+  },
+  "FAC-FILTER-DUE": {
+    "index": "logs-facility.alarms-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "facility.alarms",
+    "event.kind": "event",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "maintenance-filter-due",
+    "count": 1
+  },
+  "FAC-DOOR-AJAR": {
+    "index": "logs-facility.alarms-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "facility.alarms",
+    "event.kind": "alert",
+    "event.category": "host",
+    "event.type": "info",
+    "event.action": "rack-door-ajar",
+    "count": 1
+  },
+  "BADGE-GRANTED": {
+    "index": "logs-physical.access-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "physical.access",
+    "event.kind": "event",
+    "event.category": "authentication",
+    "event.type": "allowed",
+    "event.action": "badge-access-granted",
+    "count": 16
+  },
+  "BADGE-DENIED": {
+    "index": "logs-physical.access-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "physical.access",
+    "event.kind": "event",
+    "event.category": "authentication",
+    "event.type": "denied",
+    "event.action": "badge-access-denied",
+    "count": 1
+  },
+  "TLS-CERT-STATUS": {
+    "index": "logs-tls.certs-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "tls.certs",
+    "event.kind": "state",
+    "event.category": "configuration",
+    "event.type": "info",
+    "event.action": "certificate-scan",
+    "count": 18
+  },
+  "INC-CREATED": {
+    "index": "logs-incident.tickets-dal1",
+    "data_stream.type": "logs",
+    "data_stream.dataset": "incident.tickets",
+    "event.kind": "event",
+    "event.category": "configuration",
+    "event.type": "creation",
+    "event.action": "incident-created",
+    "count": 1
+  }
+}

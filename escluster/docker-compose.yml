@@ -1,0 +1,63 @@
+# Triagent dev cluster: single-node Elasticsearch + Kibana.
+# Every teammate runs the same file on their own machine:
+#   docker compose up -d
+#   curl http://localhost:9200            # ES
+#   open http://localhost:5601            # Kibana
+#   python3 es_setup.py --es-url http://localhost:9200
+#   python3 dcsim.py --scenario all --seed 7 --es-url http://localhost:9200
+# Security is off for local dev only. Do not expose port 9200 to the internet like this.
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    container_name: triagent-es
+    environment:
+      - node.name=triagent-es
+      - cluster.name=triagent
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - xpack.ml.enabled=false
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g
+      - action.destructive_requires_name=false   # lets you DELETE _data_stream/* between runs
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.0
+    container_name: triagent-kibana
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_NAME=triagent-kibana
+      - XPACK_SECURITY_ENABLED=false
+      - TELEMETRY_ENABLED=false
+    ports:
+      - "5601:5601"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:5601/api/status | grep -q '\"level\":\"available\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  esdata:

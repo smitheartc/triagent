@@ -1,0 +1,165 @@
+{
+  "seed": 11,
+  "dc": "dal1",
+  "namespace": "dal1",
+  "window": {
+    "start": "2026-11-07T08:00:00.000Z",
+    "end": "2026-11-07T14:00:00.000Z",
+    "tick_seconds": 60.0,
+    "time_compression": 1
+  },
+  "scenarios": [
+    {
+      "scenario": "bad_config_change",
+      "title": "Admin config change lowers LB backend maxconn -> queueing grows with traffic -> 503s",
+      "precursor_start": "2026-11-07T11:36:00.000Z",
+      "failure_time": "2026-11-07T12:51:00.000Z",
+      "ticket": {
+        "id": "INC6483311",
+        "created": "2026-11-07T12:54:00.000Z",
+        "title": "auth-svc: HTTP 5xx error rate above 25%",
+        "priority": "P1",
+        "event_id": "1ba11e5a-3e37-4da0-824b-b2e3d2d50873"
+      },
+      "root_cause": {
+        "summary": "jdoe pushed commit fc76b479 under CHG0006441, changing haproxy/conf.d/backends.cfg line 94: backend 'auth-svc' maxconn dropped from 2000 to 200. As traffic grew, requests queued at the LB and then timed out with 503s.",
+        "category": "change.configuration",
+        "entity": "lb-1",
+        "entity_type": "load_balancer",
+        "change_id": "CHG0006441",
+        "commit": "fc76b47999cab1d1c2e23d9cc16244a57d525f5d",
+        "file": "haproxy/conf.d/backends.cfg",
+        "line": 94,
+        "user": "jdoe"
+      },
+      "affected": {
+        "service": "auth-svc",
+        "load_balancer": "lb-1"
+      },
+      "metric_signals": [
+        {
+          "index": "metrics-app.service-dal1",
+          "field": "datacenter.app.p99_latency_ms",
+          "filter": {
+            "service.name": "auth-svc"
+          },
+          "description": "p99 latency climbs after LB reload"
+        },
+        {
+          "index": "metrics-app.service-dal1",
+          "field": "datacenter.app.error_rate",
+          "filter": {
+            "service.name": "auth-svc"
+          },
+          "description": "5xx rate jumps at failure"
+        }
+      ],
+      "causal_chain": [
+        {
+          "time": "2026-11-07T11:36:00.000Z",
+          "event_code": "CHG-CREATED",
+          "dataset": "change.management",
+          "event_id": "0f80c975-64e0-4ae5-a4a2-9fad7041ac08",
+          "entity": "lb-1",
+          "what": "Change ticket opened for LB backend tuning"
+        },
+        {
+          "time": "2026-11-07T11:51:00.000Z",
+          "event_code": "AUTH-SSH-SUCCESS",
+          "dataset": "security.auth",
+          "event_id": "3b63472b-6c95-4959-b9b3-b0c047005093",
+          "entity": "lb-1",
+          "what": "Admin logs into the load balancer"
+        },
+        {
+          "time": "2026-11-07T11:52:00.000Z",
+          "event_code": "AUTH-SUDO",
+          "dataset": "security.auth",
+          "event_id": "2864285a-4796-48c0-8974-3a1b5748697f",
+          "entity": "lb-1",
+          "what": "Admin edits LB config as root"
+        },
+        {
+          "time": "2026-11-07T11:58:00.000Z",
+          "event_code": "CICD-CONFIG-PUSH",
+          "dataset": "cicd.deploy",
+          "event_id": "19104e62-efaf-436d-89ae-2c61e492a8c0",
+          "entity": "lb-1",
+          "what": "ROOT CAUSE: maxconn lowered 2000 -> 200 in haproxy/conf.d/backends.cfg:94"
+        },
+        {
+          "time": "2026-11-07T11:59:15.000Z",
+          "event_code": "LB-RELOAD",
+          "dataset": "network.lb",
+          "event_id": "bf32aa7d-519b-4991-a466-b8b4e2c18853",
+          "entity": "lb-1",
+          "what": "Load balancer reloads with the new config"
+        },
+        {
+          "time": "2026-11-07T12:02:15.000Z",
+          "event_code": "CHG-IMPLEMENTED",
+          "dataset": "change.management",
+          "event_id": "150c0de8-00b6-4b2c-9792-1a9bcb0f5c05",
+          "entity": "lb-1",
+          "what": "Change marked implemented (no validation noted)"
+        },
+        {
+          "time": "2026-11-07T12:29:00.000Z",
+          "event_code": "LB-QUEUE-HIGH",
+          "dataset": "network.lb",
+          "event_id": "71215fda-2714-410b-a9ac-0650ca100ff6",
+          "entity": "lb-1",
+          "what": "First LB backend queue warning"
+        },
+        {
+          "time": "2026-11-07T12:48:09.560Z",
+          "event_code": "APP-ERROR",
+          "dataset": "app.logs",
+          "entity": "auth-svc",
+          "what": "Service request errors begin",
+          "occurrences": 72
+        },
+        {
+          "time": "2026-11-07T12:51:00.000Z",
+          "event_code": "LB-NO-SERVER",
+          "dataset": "network.lb",
+          "event_id": "f0799e08-c4d2-4dd6-a817-a9a92f14d278",
+          "entity": "lb-1",
+          "what": "FAILURE: LB starts returning 503s"
+        }
+      ]
+    }
+  ],
+  "red_herrings": [
+    {
+      "time": "2026-11-07T09:37:56.511Z",
+      "type": "transient_temp_spike",
+      "entity": "A05",
+      "description": "Rack A05 inlet temp spikes ~7 C for 15 min while a tech has the rear door open, then recovers"
+    },
+    {
+      "time": "2026-11-07T11:43:00.000Z",
+      "type": "corrected_ecc_burst",
+      "entity": "cmp-d02-04",
+      "description": "Burst of corrected (harmless) ECC memory errors on cmp-d02-04"
+    },
+    {
+      "time": "2026-11-07T12:00:00.000Z",
+      "type": "unrelated_change",
+      "entity": "CHG0006454",
+      "description": "CHG0006454: unrelated credential rotation by jdoe shortly before the failure"
+    },
+    {
+      "time": "2026-11-07T12:27:00.000Z",
+      "type": "blocked_bruteforce",
+      "entity": "198.51.100.110",
+      "description": "Short SSH brute-force burst against bastion, auto-blocked, no successful login"
+    },
+    {
+      "time": "2026-11-07T12:40:00.000Z",
+      "type": "unrelated_deploy",
+      "event_id": "3de59e8b-2ea4-40ef-91d6-aa00aeb039d7",
+      "description": "Routine deploy of search v2.12.5 shortly before the failure"
+    }
+  ]
+}
