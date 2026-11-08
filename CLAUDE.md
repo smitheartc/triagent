@@ -56,8 +56,10 @@ triagent/
     scorer.py            report vs scenario.json (stdlib only)
     tools_check.py       no-LLM harness: every tool against every ticket in the cluster
     remediate_check.py   every category's remediation names the entity type and a command or console action
-    jira_mock.py         (to build) watches ES for ticket docs, raises webhooks, accepts comment patches
-    store.py, notify.py  (to build) Supabase upsert of each job; Expo push when a job finishes
+    jira_mock.py         watches ES for ticket docs, raises webhooks, accepts comment patches (stdlib only)
+    templates/           ticket_comment.md / ticket_comment_failed.md, filled by main.patch_ticket()
+    store.py             Supabase upsert of each job on every status change, devices table, reload at startup
+    notify.py            Expo push when a webhook job finishes (prompts/summarize.md on the small model)
     prompts/             one .md per prompt, loaded at startup, versioned in git
   app/                   Expo (React Native + web) client
   t/                     scratch output, gitignored
@@ -77,6 +79,7 @@ cd server && pip install -r requirements.txt
 cp .env.example .env                                  # fill NVIDIA_API_KEY_*, ES_URL, SUPABASE_*
 uvicorn main:app --reload --port 8080
 python3 jira_mock.py --es-url http://localhost:9200 --webhook http://localhost:8080/webhook
+curl -s localhost:8082/issues                          # mock issues; GET /issue/<INC id> shows the comment
 
 # one investigation by hand
 curl -XPOST localhost:8080/investigate -d @t/ticket.json
@@ -112,6 +115,17 @@ the Job JSON (`GET /jobs/{id}` and `t/jobs/<id>.json`), trace entries, critic an
 and SSE framing, the Supabase jobs table. Code against it; never redefine a shape locally. Changing it is its own
 commit titled `contracts: ...`, and `server/tests/test_contracts.py` must pass (it checks that the real pipeline and
 the fake server both produce exactly these shapes). The summaries below are the parts every prompt and tool depends on.
+
+**contracts.py is frozen by default. Do not edit it, not even to add a model or reword a docstring, without asking the
+user first.** Other sections (the Expo app, store.py, notify.py) are built in parallel against it, often by another
+agent at the same moment, and they generate types from its schema export (`APP_MODELS`). An edit there changes their
+ground truth while they work. Work around it instead:
+- A shape that only travels between two server modules and never reaches the app (for example jira_mock's comment
+  body) lives in the module that serves it, defined once there and imported by the caller. Fold it into contracts.py
+  later, as its own `contracts: ...` commit, once the user agrees.
+- Never add to `APP_MODELS` a shape the app does not read.
+- If a change in behavior makes a contracts docstring stale (for example dedupe rules), say so in your summary and
+  leave the docstring alone. Don't "fix" it in passing.
 
 **Webhook payload** (`POST /webhook`, what jira_mock and real Jira both send):
 ```json
@@ -172,7 +186,11 @@ The accuracy table is a demo slide. Keep the scorer runnable from a clean checko
 
 ## Mock Jira
 
-`jira_mock.py` polls `logs-incident.tickets-*` for new `INC-CREATED` docs, stores them, POSTs the webhook payload above, and exposes `POST /issue/{id}/comment` that the orchestrator calls with the report. Real Jira/SNOW integration is a config toggle (`TICKET_BACKEND=mock|jira|snow`) with the same payload shape. The demo runs on mock. Do not make the mock smarter than needed.
+`jira_mock.py` polls `logs-incident.tickets-*` for new `INC-CREATED` docs, stores them, POSTs the webhook payload above, and exposes `POST /issue/{id}/comment` that the orchestrator calls with the report. Real Jira/SNOW integration is a config toggle (`TICKET_BACKEND=mock|none|jira|snow`, only mock and none are built) with the same payload shape. The demo runs on mock. Do not make the mock smarter than needed.
+
+- Tickets already in ES when the mock starts are processed too (`--skip-existing` to ignore them); webhooks retry until the server answers, so start order does not matter. Issues live in memory.
+- dcsim reuses ticket ids for the same seed. A new ticket doc for a known id (re-ingest, second `--stream` run) reopens the issue, and the server dedupes on `ticket_id` + `created`, so it gets a fresh investigation. An exact replay (same `--start`) is a duplicate: restart the server to re-run it.
+- Only jobs that arrived on `/webhook` comment; `/investigate` (curl, scorer) never does. A failed patch is a trace `error` entry, never a failed job. The comment text is `server/templates/ticket_comment*.md`.
 
 ## Mobile app
 
@@ -222,7 +240,7 @@ JSON (`python3 server/contracts.py --sql`). Screens, in build order: Inbox, Inci
 5. `scorer.py`, run all nine: done (`--runs 3`: 20/27 before the critic)
 6. `critic.py`, measure the change in the table: done (18/27 after; the retry costs more than it fixes)
 7. `runbooks/` and `remediate.py`: done (`remediate_check.py` passes for all ten categories)
-8. `jira_mock.py` and ticket patching
+8. `jira_mock.py` and ticket patching: done (a fresh ingest ends with the report as a comment on the mock issue)
 9. `app/` in the screen order above: built against `fake_server.py`, all five screens plus push registration (`app/README.md`); Supabase reads wait on `store.py`
 10. Real Jira/SNOW toggle, only if time remains
 

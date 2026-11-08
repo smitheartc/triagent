@@ -47,6 +47,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import jira_mock  # noqa: E402  (stdlib only, like this file)
+
 SERVER_DIR = Path(__file__).resolve().parent
 ROOT = SERVER_DIR.parent
 DEFAULT_START = "2026-11-07T08:00:00Z"   # fixed, so ingests are reproducible and ticket ids stable
@@ -162,12 +165,7 @@ def load_key(es: ES, args: argparse.Namespace) -> dict[str, Any]:
 
 def payload_from_doc(src: dict[str, Any], ns: str) -> dict[str, Any]:
     """Webhook payload exactly as jira_mock builds it from an INC-CREATED doc."""
-    tk = src.get("ticket", {})
-    return {"ticket_id": tk.get("id"), "title": tk.get("title", ""), "description": tk.get("description", ""),
-            "priority": tk.get("priority") or "P3", "created": src["@timestamp"],
-            "service": (src.get("service") or {}).get("name"), "host": (src.get("host") or {}).get("name"),
-            "labels": {k: v for k, v in (src.get("labels") or {}).items() if k in ("row", "rack", "cluster")},
-            "namespace": ns, "source_event_id": src["event"]["id"]}
+    return jira_mock.payload_from_doc(src, ns)
 
 
 # ---------------------------------------------------------------------------------------------

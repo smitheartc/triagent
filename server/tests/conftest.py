@@ -8,6 +8,11 @@ sys.path.insert(0, str(SERVER))
 # Tests never touch the network; make sure nothing accidentally picks up a real key or cluster.
 os.environ["NVIDIA_API_KEY"] = "test-key-not-real"
 os.environ["ES_URL"] = "http://127.0.0.1:9"
+# Set before main loads server/.env (load_dotenv never overrides): no Supabase writes, no real pushes from tests.
+os.environ["SUPABASE_URL"] = ""
+os.environ["SUPABASE_SERVICE_KEY"] = ""
+os.environ["SUPABASE_SECRET_KEY"] = ""
+os.environ["EXPO_PUSH_URL"] = "http://127.0.0.1:9/push"
 
 import pytest  # noqa: E402
 

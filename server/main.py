@@ -16,7 +16,7 @@ Final state, report and trace
     curl -s localhost:8080/jobs/<job_id> | python3 -m json.tool
 
 Endpoints
-    POST /webhook             Jira / jira_mock payload; dedupes on ticket_id
+    POST /webhook             Jira / jira_mock payload; dedupes on ticket_id + created
     POST /investigate         same body and behavior, for curl; optional ?seed=N pins the model seed (scorer)
     GET  /jobs                newest first, JobSummary rows (Inbox)
     GET  /jobs/{job_id}       status (queued|running|critic|remediating|done|failed), report, trace
@@ -28,6 +28,20 @@ Endpoints
 
 All shapes are defined in contracts.py. fake_server.py serves this same app with scripted jobs.
 
+Ticket patch: when a job that arrived on /webhook finishes (done or failed), patch_ticket() renders
+templates/ticket_comment.md (or ticket_comment_failed.md) and posts it to the ticket system chosen by TICKET_BACKEND:
+mock (default, jira_mock.py at JIRA_MOCK_URL), none, jira or snow (not implemented yet). Jobs started with
+/investigate (curl, scorer) never comment. A failed patch is recorded in the trace and never fails the job.
+
+Supabase (store.py, off until SUPABASE_URL and SUPABASE_SERVICE_KEY are set): every status change upserts the job's
+row on one writer thread, so writes stay in order and never block the pipeline; at startup the newest jobs are loaded
+back so GET /jobs survives a restart; POST /devices also saves the token. Push (notify.py): when a webhook job ends,
+every registered device gets an Expo push (TRIAGENT_PUSH=webhook|all|off, default webhook). fake_server.py does
+neither.
+
+At most TRIAGENT_MAX_PARALLEL_JOBS investigations run at once (default 3; the NVIDIA account limit is per minute);
+the rest wait in status "queued".
+
 Jobs live in memory and are written to t/jobs/<job_id>.json when they finish. Restarting the server forgets them.
 """
 from __future__ import annotations
@@ -37,7 +51,9 @@ import importlib
 import json
 import logging
 import os
+import string
 import time
+from concurrent.futures import ThreadPoolExecutor
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -51,6 +67,9 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 import investigator
 import llm
+import notify
+import store
+import jira_mock
 from contracts import Action, ActionRequest, DeviceRegistration, WebhookPayload, summarize
 from tools import ESTools
 from tracelog import Trace
@@ -61,6 +80,8 @@ log = logging.getLogger("triagent.main")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TERMINAL = ("done", "failed")
+TEMPLATES_DIR = Path(__file__).with_name("templates")
+TICKET_BACKENDS = ("mock", "none", "jira", "snow")
 SSE_KEEPALIVE_S = 15.0
 
 
@@ -81,6 +102,11 @@ class Settings:
     critic_enabled: bool = True
     scores_dir: Path = REPO_ROOT / "t" / "scores"
     fake: bool = False                    # set by fake_server.py
+    ticket_backend: str = "mock"          # TICKET_BACKEND: mock | none | jira | snow
+    jira_mock_url: str = "http://localhost:8082"
+    public_url: str = ""                  # TRIAGENT_PUBLIC_URL: base URL put in ticket comments, if set
+    max_parallel_jobs: int = 3
+    push_mode: str = "webhook"            # TRIAGENT_PUSH: webhook | all | off
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -95,6 +121,11 @@ class Settings:
             max_tool_calls=int(os.environ.get("TRIAGENT_MAX_TOOL_CALLS", "20")),
             jobs_dir=Path(os.environ.get("TRIAGENT_JOBS_DIR") or REPO_ROOT / "t" / "jobs"),
             critic_enabled=os.environ.get("TRIAGENT_CRITIC", "1") != "0",
+            ticket_backend=(os.environ.get("TICKET_BACKEND") or "mock").strip().lower(),
+            jira_mock_url=os.environ.get("JIRA_MOCK_URL") or "http://localhost:8082",
+            public_url=(os.environ.get("TRIAGENT_PUBLIC_URL") or "").rstrip("/"),
+            max_parallel_jobs=max(1, int(os.environ.get("TRIAGENT_MAX_PARALLEL_JOBS", "3"))),
+            push_mode=(os.environ.get("TRIAGENT_PUSH") or "webhook").strip().lower(),
         )
 
 
@@ -112,6 +143,9 @@ class Job:
     remediation: dict[str, Any] | None = None
     error: str | None = None
     seed: int | None = None
+    origin: str = "investigate"           # "webhook" jobs get a ticket comment and a push; not in the Job JSON
+    saver: Any = None                     # StoreWriter, set at enqueue when Supabase is on; not in the Job JSON
+    devices: dict[str, dict[str, Any]] | None = None   # Registry.devices (push tokens); not in the Job JSON
     report_initial: dict[str, Any] | None = None
     actions: list[dict[str, Any]] = field(default_factory=list)
     totals_initial: dict[str, int] | None = None
@@ -142,6 +176,7 @@ class Job:
     def set_status(self, status: str, **extra: Any) -> None:
         self.status = status
         self.trace.add("status", status=status, **extra)
+        store_report(self)
 
     def subscribe(self) -> tuple[list[dict[str, Any]], asyncio.Queue]:
         """Snapshot + live queue, taken atomically on the event loop. Duplicates are filtered by seq."""
@@ -172,6 +207,42 @@ class Registry:
         self.by_ticket: dict[str, str] = {}
         self.tasks: set[asyncio.Task] = set()
         self.devices: dict[str, dict[str, Any]] = {}   # expo push token -> registration (notify.py reads it)
+        self.slots: asyncio.Semaphore | None = None     # created on the server's loop at the first enqueue
+
+
+class StoreWriter:
+    """Upserts Job snapshots to Supabase on one thread, in the order they were taken. Failures are logged only."""
+
+    def __init__(self, st: store.Store) -> None:
+        self.store = st
+        self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="store")
+
+    def __call__(self, snapshot: dict[str, Any]) -> None:
+        self.pool.submit(self._save, snapshot)
+
+    def _save(self, snapshot: dict[str, Any]) -> None:
+        try:
+            self.store.save(snapshot)
+        except Exception as exc:  # noqa: BLE001 - Supabase being down must not touch the pipeline
+            log.warning("supabase: job %s (%s) not saved: %s", snapshot.get("job_id"), snapshot.get("status"), exc)
+
+
+def job_from_view(view: dict[str, Any], loop: asyncio.AbstractEventLoop) -> Job:
+    """A registry Job rebuilt from its Job JSON (a Supabase row). A job that never finished is marked failed."""
+    job = Job(job_id=view["job_id"], ticket=view["ticket"], loop=loop)
+    for name in ("status", "report", "critic", "remediation", "error", "seed", "report_initial", "totals_initial",
+                 "initial_seconds", "created", "finished"):
+        if view.get(name) is not None:
+            setattr(job, name, view[name])
+    job.actions = list(view.get("actions") or [])
+    job.trace.restore(view.get("trace") or [])
+    if job.status not in TERMINAL:
+        job.error = job.error or "server restarted during the investigation"
+        job.finished = job.finished or time.time()
+        job.trace.add("error", message=job.error)
+        job.status = "failed"
+        job.trace.add("status", status="failed")
+    return job
 
 
 # ---------------------------------------------------------------------------------------------
@@ -202,11 +273,111 @@ def with_review_notes(report: dict[str, Any], review: dict[str, Any]) -> dict[st
 
 
 def store_report(job: Job) -> None:
-    """Hook: persist the report to Supabase. Later build step; no-op for now."""
+    """Queue a Supabase upsert of the job as it is now (called on every status change). No-op without Supabase."""
+    if job.saver is not None:
+        job.saver(job.view())
 
 
-def patch_ticket(job: Job) -> None:
-    """Hook: post the report as a comment on the ticket (jira_mock / Jira / SNOW). Later build step; no-op for now."""
+def push_finished(job: Job, settings: Settings) -> None:
+    """Expo push for a finished job to every known device (POST /devices since start, plus Supabase's devices)."""
+    if settings.fake or settings.push_mode == "off" or (settings.push_mode != "all" and job.origin != "webhook"):
+        return
+    tokens = list(job.devices or {})
+    try:
+        tokens += [d["expo_push_token"] for d in store.default().devices()]
+    except Exception as exc:  # noqa: BLE001
+        log.warning("supabase: devices not read, pushing to the %d in memory: %s", len(tokens), exc)
+    notify.push(job, tokens)
+
+
+def _bullets(items: list[str], empty: str = "- none") -> str:
+    return "\n".join(f"- {x}" for x in items) if items else empty
+
+
+def _numbered(items: list[str], empty: str) -> str:
+    return "\n".join(f"{i}. {x}" for i, x in enumerate(items, 1)) if items else empty
+
+
+def _cost(job: Job) -> str:
+    t = job.trace.totals()
+    secs = (job.finished or time.time()) - job.created
+    return (f"{t['llm_calls']} model calls, {t['tool_calls']} tool calls, "
+            f"{t['prompt_tokens'] + t['completion_tokens']} tokens, {secs:.0f}s")
+
+
+def render_comment(job: Job, settings: Settings, status: str) -> dict[str, Any]:
+    """The comment (jira_mock.comment_payload) for a job ending in status (done|failed), from templates/."""
+    link = f"{settings.public_url}/jobs/{job.job_id}" if settings.public_url else ""
+    common = {"job": f"{job.job_id} ({link})" if link else job.job_id, "cost": _cost(job)}
+    if status != "done" or not job.report:
+        body = string.Template((TEMPLATES_DIR / "ticket_comment_failed.md").read_text(encoding="utf-8")).substitute(
+            common, error=job.error or "no report produced")
+        return jira_mock.comment_payload(body.strip() + "\n", job.job_id, "failed")
+
+    r = job.report
+    rc = r.get("root_cause") or {}
+    rem = job.remediation or {}
+    final = (job.critic or {}).get("final") or {}
+    critic = final.get("verdict") or "skipped"
+    if final.get("verdict") == "fail":
+        critic += f" ({len(final.get('failed') or [])} checks failed, see open questions)"
+    chain = [f"`{c.get('event_id')}` {c.get('timestamp', '')}: {c.get('what', '')}"
+             + (f" ({c['why_it_matters']})" if c.get("why_it_matters") else "")
+             for c in r.get("causal_chain") or []]
+    rejected = [f"{x.get('what', '')}: {x.get('why_rejected', '')}"
+                + (" (" + ", ".join(f"`{e}`" for e in x.get("event_ids") or []) + ")" if x.get("event_ids") else "")
+                for x in r.get("rejected_candidates") or []]
+    runbook = rem.get("runbook") or "no runbook"
+    if rem and not rem.get("covered", True):
+        runbook += ", does not cover this cause: safe triage steps"
+    fields = {
+        "confidence": f"{float(r.get('confidence') or 0):.2f}", "critic": critic,
+        "problem": r.get("problem", ""),
+        "category": rc.get("category", "unknown"), "entity_type": rc.get("entity_type", ""),
+        "entity": rc.get("entity", ""), "root_cause": rc.get("summary", ""),
+        "identifiers": ", ".join(f"{k}={v}" for k, v in (rc.get("identifiers") or {}).items()) or "none",
+        "cause_event_ids": ", ".join(f"`{e}`" for e in rc.get("event_ids") or []) or "none",
+        "chain": _numbered(chain, "none recorded"), "rejected": _bullets(rejected),
+        "runbook": runbook,
+        "immediate": _numbered(rem.get("immediate") or [], "remediation not available"),
+        "verify": _bullets(rem.get("verify") or []), "prevent": _bullets(rem.get("prevent") or []),
+        "rollback_risk": rem.get("rollback_risk") or "unknown",
+        "open_questions": _bullets(r.get("open_questions") or []),
+    }
+    body = string.Template((TEMPLATES_DIR / "ticket_comment.md").read_text(encoding="utf-8")).substitute(
+        common, **fields)
+    return jira_mock.comment_payload(body.strip() + "\n", job.job_id, "done")
+
+
+def _post_mock_comment(settings: Settings, ticket_id: str, comment: dict[str, Any]) -> dict[str, Any]:
+    url = f"{settings.jira_mock_url.rstrip('/')}/issue/{ticket_id}/comment"
+    r = httpx.post(url, json=comment, timeout=10.0)
+    if r.status_code >= 300:
+        raise RuntimeError(f"POST {url} -> {r.status_code}: {r.text[:200]}")
+    res = r.json()
+    if not isinstance(res, dict) or any(k not in res for k in jira_mock.COMMENT_RESPONSE_FIELDS):
+        raise RuntimeError(f"POST {url}: unexpected reply {str(res)[:200]}")
+    return res
+
+
+def patch_ticket(job: Job, settings: Settings, status: str) -> None:
+    """Post the finished job as a comment on its ticket. Only for webhook jobs. Never raises: a ticket system being
+    down must not turn a good investigation into a failed job; the outcome goes into the trace instead."""
+    if job.origin != "webhook" or settings.ticket_backend == "none":
+        return
+    ticket_id = job.ticket.get("ticket_id")
+    try:
+        comment = render_comment(job, settings, status)
+        if settings.ticket_backend == "mock":
+            res = _post_mock_comment(settings, ticket_id, comment)
+            job.trace.add("info", message=f"ticket {ticket_id}: comment {res['id']} posted to jira_mock")
+        elif settings.ticket_backend in ("jira", "snow"):
+            raise NotImplementedError(f"TICKET_BACKEND={settings.ticket_backend} is not implemented yet; use mock")
+        else:
+            raise ValueError(f"unknown TICKET_BACKEND {settings.ticket_backend!r}; one of {', '.join(TICKET_BACKENDS)}")
+    except Exception as exc:  # noqa: BLE001 - see docstring
+        log.warning("job %s: ticket patch for %s failed: %s", job.job_id, ticket_id, exc)
+        job.trace.add("error", message=f"ticket {ticket_id}: comment not posted ({type(exc).__name__}: {exc})")
 
 
 def persist(job: Job, jobs_dir: Path) -> Path:
@@ -274,15 +445,19 @@ async def run_pipeline(job: Job, settings: Settings) -> None:
             job.remediation = await asyncio.to_thread(remediate.run, job.report, job.trace, ticket)
 
         store_report(job)
-        patch_ticket(job)
         job.finished = time.time()
+        # Before the terminal status: SSE ends once the status is terminal, and the patch outcome is a trace entry.
+        await asyncio.to_thread(patch_ticket, job, settings, "done")
         job.set_status("done", totals=job.trace.totals())
+        await asyncio.to_thread(push_finished, job, settings)
     except Exception as exc:  # noqa: BLE001 - a job must always end in a terminal state
         log.exception("job %s failed", job.job_id)
         job.error = f"{type(exc).__name__}: {exc}"
         job.trace.add("error", message=job.error)
         job.finished = time.time()
+        await asyncio.to_thread(patch_ticket, job, settings, "failed")
         job.set_status("failed")
+        await asyncio.to_thread(push_finished, job, settings)
     finally:
         es.close()
         try:
@@ -290,6 +465,7 @@ async def run_pipeline(job: Job, settings: Settings) -> None:
             log.info("job %s %s -> %s", job.job_id, job.status, path)
         except OSError:
             log.exception("could not persist job %s", job.job_id)
+        store_report(job)   # the final row includes entries added after the terminal status (push outcome)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -302,19 +478,30 @@ def _registry(request: Request) -> Registry:
     return request.app.state.registry
 
 
-async def _enqueue(request: Request, payload: WebhookPayload, seed: int | None = None) -> JSONResponse:
+async def _run_in_slot(app: FastAPI, job: Job) -> None:
+    reg: Registry = app.state.registry
+    async with reg.slots:
+        await app.state.pipeline(job, app.state.settings)
+
+
+async def _enqueue(request: Request, payload: WebhookPayload, seed: int | None = None,
+                   origin: str = "investigate") -> JSONResponse:
     reg = _registry(request)
     existing = reg.by_ticket.get(payload.ticket_id)
-    if existing is not None:
+    # Same ticket_id and created = a repeated delivery. A new created is the ticket raised again (dcsim reuses ids
+    # across runs with the same seed), which gets its own investigation.
+    if existing is not None and reg.jobs[existing].ticket.get("created") == payload.created:
         job = reg.jobs[existing]
         return JSONResponse({"job_id": job.job_id, "ticket_id": payload.ticket_id, "status": job.status,
                              "duplicate": True})
     job = Job(job_id=f"job-{uuid.uuid4().hex[:12]}", ticket=payload.model_dump(), loop=asyncio.get_running_loop(),
-              seed=seed)
+              seed=seed, origin=origin, saver=getattr(request.app.state, "store_writer", None), devices=reg.devices)
     reg.jobs[job.job_id] = job
     reg.by_ticket[payload.ticket_id] = job.job_id
     job.set_status("queued")
-    task = asyncio.create_task(request.app.state.pipeline(job, request.app.state.settings))
+    if reg.slots is None:
+        reg.slots = asyncio.Semaphore(request.app.state.settings.max_parallel_jobs)
+    task = asyncio.create_task(_run_in_slot(request.app, job))
     reg.tasks.add(task)
     task.add_done_callback(reg.tasks.discard)
     log.info("ticket %s -> %s queued", payload.ticket_id, job.job_id)
@@ -323,7 +510,7 @@ async def _enqueue(request: Request, payload: WebhookPayload, seed: int | None =
 
 @router.post("/webhook")
 async def webhook(payload: WebhookPayload, request: Request) -> JSONResponse:
-    return await _enqueue(request, payload)
+    return await _enqueue(request, payload, origin="webhook")
 
 
 @router.post("/investigate")
@@ -367,6 +554,11 @@ async def latest_scores(request: Request) -> dict[str, Any]:
 @router.post("/devices")
 async def register_device(body: DeviceRegistration, request: Request) -> dict[str, Any]:
     _registry(request).devices[body.expo_push_token] = body.model_dump()
+    if getattr(request.app.state, "store_writer", None) is not None:
+        try:
+            await asyncio.to_thread(store.default().save_device, body.model_dump())
+        except Exception as exc:  # noqa: BLE001 - the token is still registered in memory
+            log.warning("supabase: device not saved: %s", exc)
     return {"ok": True}
 
 
@@ -436,7 +628,7 @@ async def health(request: Request) -> dict[str, Any]:
         es.update(ok=False, error=str(exc))
     # Only the investigator is required today; critic and small are later build steps.
     ok = es["ok"] and s.nvidia_keys_set["investigator"]
-    return {"ok": ok, "elasticsearch": es, "nvidia_keys_set": s.nvidia_keys_set,
+    return {"ok": ok, "elasticsearch": es, "supabase": store.default().status(), "nvidia_keys_set": s.nvidia_keys_set,
             "nvidia_base_url": s.nvidia_base_url,
             "models": {"investigator": s.model_investigator, "critic": s.model_critic, "small": s.model_small},
             "max_tool_calls": s.max_tool_calls}
@@ -451,6 +643,29 @@ def create_app(settings: Settings | None = None, pipeline: Any = None) -> FastAP
     application.state.registry = Registry()
     application.state.settings = settings or Settings.from_env()
     application.state.pipeline = pipeline or run_pipeline
+    st = store.default()
+    application.state.store_writer = StoreWriter(st) if st.enabled and not application.state.settings.fake else None
+
+    async def _load_jobs() -> None:
+        if getattr(application.state, "store_writer", None) is None:
+            return
+        try:
+            views = await asyncio.to_thread(st.load_jobs)
+        except Exception as exc:  # noqa: BLE001 - start empty rather than not at all
+            log.warning("supabase: jobs not loaded at startup: %s", exc)
+            return
+        reg, loop = application.state.registry, asyncio.get_running_loop()
+        for view in views:
+            if view.get("job_id") and view["job_id"] not in reg.jobs:
+                job = job_from_view(view, loop)
+                job.saver = application.state.store_writer
+                reg.jobs[job.job_id] = job
+                if view.get("status") not in TERMINAL:
+                    store_report(job)
+        # by_ticket is not restored: a ticket raised again after a restart is investigated again, as before.
+        log.info("supabase: loaded %d jobs", len(views))
+
+    application.router.on_startup.append(_load_jobs)
     return application
 
 

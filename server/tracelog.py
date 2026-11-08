@@ -39,6 +39,13 @@ class Trace:
             self._on_add(entry)
         return entry
 
+    def restore(self, entries: list[dict[str, Any]]) -> None:
+        """Replace the entries with ones saved earlier (a job loaded from Supabase). New entries continue the seq."""
+        with self._lock:
+            self._entries = [dict(e) for e in sorted(entries, key=lambda e: e.get("seq", 0))]
+            for i, e in enumerate(self._entries, 1):
+                e["seq"] = i
+
     def entries(self) -> list[dict[str, Any]]:
         with self._lock:
             return list(self._entries)

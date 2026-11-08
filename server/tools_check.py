@@ -25,6 +25,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from jira_mock import payload_from_doc  # noqa: E402
 from tools import TOOL_NAMES, ESTools  # noqa: E402
 
 COLUMNS = ["search_events", "aggregate", "metric_series", "find_changes", "expand_scope", "get_doc",
@@ -41,16 +42,7 @@ def tickets_from_es(es_url: str, api_key: str | None, ns: str, only: str | None)
                                                        "sort": [{"@timestamp": "asc"}]})
     finally:
         t.close()
-    out = []
-    for h in res["hits"]["hits"]:
-        s = h["_source"]
-        tk = s.get("ticket", {})
-        out.append({"ticket_id": tk.get("id"), "title": tk.get("title", ""), "description": tk.get("description", ""),
-                    "priority": tk.get("priority"), "created": s["@timestamp"],
-                    "service": (s.get("service") or {}).get("name"), "host": (s.get("host") or {}).get("name"),
-                    "labels": {k: v for k, v in (s.get("labels") or {}).items() if k in ("row", "rack", "cluster")},
-                    "namespace": ns, "source_event_id": s["event"]["id"]})
-    return out
+    return [payload_from_doc(h["_source"], ns) for h in res["hits"]["hits"]]
 
 
 def scope_of(ticket: dict[str, Any]) -> tuple[dict[str, Any], list[str], str | None]:
