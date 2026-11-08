@@ -134,6 +134,9 @@ class _Loop:
         return result
 
     def validate(self, args: dict[str, Any]) -> tuple[Report | None, str | None]:
+        args, decoded = decode_json_fields(args)
+        if decoded:
+            self.trace.add("info", message=f"submit_report sent {', '.join(decoded)} as JSON text; decoded it")
         try:
             return Report.model_validate(args), None
         except ValidationError as exc:
@@ -326,6 +329,34 @@ def build_ask_message(job: dict[str, Any], question: str, catalog: list[dict[str
         *[f"{c['code']}  {c['index']}  {c['action']}" for c in catalog], "",
         "Follow-up question from the on-call engineer:", question.strip()])
 
+
+def decode_json_fields(args: Any) -> tuple[Any, list[str]]:
+    """The model sometimes sends an object or list field of submit_report as JSON text (root_cause as
+    "{\"summary\": ...}"), and repeats it when asked to correct it. Decode such fields, top level and
+    root_cause.identifiers, before validation. Returns (args, names of the decoded fields)."""
+    if not isinstance(args, dict):
+        return args, []
+    out, decoded = dict(args), []
+    for key, value in args.items():
+        parsed = _json_container(value)
+        if parsed is not None:
+            out[key] = parsed
+            decoded.append(key)
+    rc = out.get("root_cause")
+    if isinstance(rc, dict) and (ids := _json_container(rc.get("identifiers"))) is not None:
+        out["root_cause"] = {**rc, "identifiers": ids}
+        decoded.append("root_cause.identifiers")
+    return out, decoded
+
+
+def _json_container(value: Any) -> Any:
+    if not isinstance(value, str) or value.strip()[:1] not in ("{", "["):
+        return None
+    try:
+        parsed = json.loads(value)
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, (dict, list)) else None
 
 class _AskLoop(_Loop):
     """The investigator loop with answer_question as the terminal tool."""

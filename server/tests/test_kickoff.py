@@ -291,6 +291,24 @@ def test_investigator_sends_validation_error_back_once(monkeypatch):
     assert report["root_cause"]["category"] == "config"
 
 
+
+def test_investigator_decodes_fields_sent_as_json_text(monkeypatch):
+    rc = {**GOOD_REPORT["root_cause"], "identifiers": json.dumps(GOOD_REPORT["root_cause"]["identifiers"])}
+    sent = {**GOOD_REPORT, "root_cause": json.dumps(rc), "causal_chain": json.dumps(GOOD_REPORT["causal_chain"])}
+    calls = []
+
+    def script(messages, tools):
+        calls.append(1)
+        return _result([{"name": "submit_report", "arguments": sent}])
+    monkeypatch.setattr(llm, "chat", _fake_chat(script))
+    trace = Trace()
+    report = investigator.run(TICKET, FakeTools(known_ids={"real-1", "real-2", "fake-9"}), trace, max_calls=5)
+    assert len(calls) == 1 and report["root_cause"]["category"] == GOOD_REPORT["root_cause"]["category"]
+    assert report["root_cause"]["identifiers"] == GOOD_REPORT["root_cause"]["identifiers"]
+    assert any("as JSON text" in (e.get("message") or "") for e in trace.entries())
+    assert investigator.decode_json_fields({"problem": "{not json", "open_questions": "[]"}) == \
+        ({"problem": "{not json", "open_questions": []}, ["open_questions"])
+
 # ---------------------------------------------------------------------------------------------
 # find_changes ranking helpers and result truncation
 # ---------------------------------------------------------------------------------------------
