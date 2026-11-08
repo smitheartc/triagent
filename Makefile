@@ -1,5 +1,5 @@
 # Triagent shortcuts. Everything runs from the repo root; the server's Python lives in .venv.
-#   make demo                 three incidents live end to end (./demo.sh), SCENARIO=bad_optic for one
+#   make demo                 two incidents live end to end (./demo.sh), SCENARIO=bad_optic for one
 #   make score                scorer over all nine scenarios, RUNS=3 by default (RUNS=1 for a quick pass)
 #   make remote HOST=<brev>   Elasticsearch + Kibana on a Brev/SSH host, tunnelled to localhost (escluster/remote.sh)
 #   make help                 the full list
@@ -9,7 +9,7 @@ PY        := .venv/bin/python
 STAMP     := .venv/.triagent-deps
 ES_URL    ?= http://localhost:9200
 KIBANA    ?= http://localhost:5601
-# empty: demo.sh's three-incident default; SCENARIO=bad_optic for one, or any comma list
+# empty: demo.sh's two-incident default; SCENARIO=bad_optic for one, or any comma list
 SCENARIO  ?=
 RUNS      ?= 3
 PARALLEL  ?= 2
@@ -42,7 +42,7 @@ es: ## start Elasticsearch + Kibana in Docker and apply the dcsim templates (DOC
 kibana: ## the two judge dashboards (needs the dal1 data that make score loads)
 	python3 escluster/kibana_demo.py --kibana-url $(KIBANA)
 
-demo: setup ## incidents live: reset the demo namespace, stream SCENARIO (default three) at 60x, follow each to its ticket comment
+demo: setup ## incidents live: reset the demo namespace, stream SCENARIO (default two) at 60x, follow each to its ticket comment
 	./demo.sh $(SCENARIO)
 
 demo-stop: ## stop what make demo started

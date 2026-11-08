@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # demo.sh: incidents live, end to end, on this machine.
 #
-#   ./demo.sh                          three incidents in one stream: pdu_overload,bad_optic,memory_leak
-#                                      (a rack loses power, an uplink optic degrades, a release leaks memory)
+#   ./demo.sh                          two incidents in one stream: pdu_overload,disk_cascade (a rack loses
+#                                      power, a host's RAID array dies); the two cheapest reliable scenarios in
+#                                      the scorer runs. Add more by hand while it runs (README: "Another incident")
 #   ./demo.sh bad_optic                one incident: any scenario from python3 sim/dcsim.py --list-scenarios
-#   ./demo.sh cooling_failure,disk_fill   any comma list (the server investigates up to 3 at once)
+#   ./demo.sh cooling_failure,disk_fill   any comma list
 #   ./demo.sh stop                     stop the server, jira_mock and the simulator started by an earlier run
 #
 # What it does:
@@ -15,13 +16,15 @@
 #      Jira-style board is http://localhost:8082/
 #   5. streams the scenarios at 60x in one simulated data center: 5 simulated hours. One scenario fails at 4h15m
 #      (ticket about 4 minutes in); with several, dcsim spreads the failures between ~45% and 88% of the window
-#      (three: tickets about 3, 3.7 and 4.4 minutes in)
+#      (two: tickets about 3.4 and 4.5 minutes in)
+#      The server investigates one ticket at a time (DEMO_PARALLEL=1): parallel investigations share NVIDIA's
+#      per-minute rate limit and one fails when its retries run out. A later ticket waits in the queue on the board.
 #   6. follows every ticket: webhook -> investigation -> comment on the mock issue, printing each comment and its job's
 #      cost and latency line as it lands. Each finished ticket also sends a phone push (server/notify.py).
 #      The services keep running for the app
 #
 # Logs and the answer key go to t/demo/. Environment overrides: ES_URL, PORT, MOCK_PORT, DEMO_NAMESPACE, DEMO_SEED,
-# DEMO_SPEED, DEMO_TIMEOUT (seconds to wait for every ticket's comment, default 1200).
+# DEMO_SPEED, DEMO_PARALLEL (investigations at once, default 1), DEMO_TIMEOUT (seconds to wait for every ticket's comment, default 1500).
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -34,8 +37,9 @@ MOCK_PORT=${MOCK_PORT:-8082}
 NS=${DEMO_NAMESPACE:-demo}
 SEED=${DEMO_SEED:-7}
 SPEED=${DEMO_SPEED:-60}
-TIMEOUT=${DEMO_TIMEOUT:-1200}
-SCENARIO=${1:-pdu_overload,bad_optic,memory_leak}
+TIMEOUT=${DEMO_TIMEOUT:-1500}
+PARALLEL=${DEMO_PARALLEL:-1}
+SCENARIO=${1:-pdu_overload,disk_cascade}
 
 say()  { printf '\033[1m==> %s\033[0m\n' "$*"; }
 die()  { printf '\033[31mdemo.sh: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -127,9 +131,9 @@ python3 escluster/es_setup.py --es-url "$ES_URL" --namespace "$NS" --reset --ver
 up "http://localhost:$PORT/health" && die "something already answers on :$PORT; stop it or run with PORT=..."
 up "http://localhost:$MOCK_PORT/health" && die "something already answers on :$MOCK_PORT; stop it or run with MOCK_PORT=..."
 
-say "starting the server on :$PORT"
+say "starting the server on :$PORT ($PARALLEL investigation(s) at a time)"
 # exec: the subshell becomes uvicorn, so $! is the pid that holds the port
-(cd server && ES_URL="$ES_URL" TICKET_BACKEND=mock JIRA_MOCK_URL="http://localhost:$MOCK_PORT" \
+(cd server && ES_URL="$ES_URL" TRIAGENT_MAX_PARALLEL_JOBS="$PARALLEL" TICKET_BACKEND=mock JIRA_MOCK_URL="http://localhost:$MOCK_PORT" \
     exec nohup "$PY" -m uvicorn main:app --host 0.0.0.0 --port "$PORT" >"$RUN/server.log" 2>&1) &
 echo $! >"$RUN/server.pid"
 for _ in $(seq 1 30); do up "http://localhost:$PORT/health" && break; sleep 1; done
@@ -155,7 +159,8 @@ nohup python3 sim/dcsim.py --scenario "$SCENARIO" --seed "$SEED" --namespace "$N
 echo $! >"$RUN/dcsim.pid"
 
 # ---------------------------------------------------------------------------- 6. follow the tickets
-"$PY" - "$PORT" "$MOCK_PORT" "$TIMEOUT" "$RUN/dcsim.pid" "$N" <<'PY'
+rc=0
+"$PY" - "$PORT" "$MOCK_PORT" "$TIMEOUT" "$RUN/dcsim.pid" "$N" <<'PY' || rc=$?
 import json, os, sys, time, urllib.request
 
 port, mock_port, timeout, dcsim_pid, want = sys.argv[1], sys.argv[2], float(sys.argv[3]), sys.argv[4], int(sys.argv[5])
@@ -169,7 +174,7 @@ def alive(pidfile):
     except (OSError, ValueError):
         return False
 
-t0, last, done, jobs = time.time(), {}, {}, {}
+t0, last, done, jobs, failed = time.time(), {}, {}, {}, []
 while len(done) < want and time.time() - t0 < timeout:
     time.sleep(3)
     try:
@@ -205,16 +210,26 @@ while len(done) < want and time.time() - t0 < timeout:
             job = get(f"http://localhost:{port}/jobs/{job_id}")
             cost = next((e["message"] for e in reversed(job["trace"])
                          if (e.get("message") or "").startswith("cost and latency")), "")
-            print(f"\n\033[1m==> comment on mock issue {iid} ({len(done) + 1} of {want}) after {time.time() - t0:.0f}s\033[0m\n")
+            if job["status"] == "failed":
+                failed.append(iid)
+                print(f"\n\033[31;1m==> {iid} FAILED ({len(done) + 1} of {want}) after {time.time() - t0:.0f}s: "
+                      f"{job.get('error')}\033[0m\n")
+            else:
+                print(f"\n\033[1m==> comment on mock issue {iid} ({len(done) + 1} of {want}) after {time.time() - t0:.0f}s\033[0m\n")
             print(full["comments"][-1]["body"])
             print(f"\n\033[1m==> {cost}\033[0m\n", flush=True)
             done[iid] = job_id
 if len(done) < want:
     sys.exit(f"{len(done)} of {want} tickets commented after {timeout:.0f}s; logs in t/demo/ (server.log, jira_mock.log, dcsim.log)")
 
-print(f"\033[1m==> all {want} tickets triaged in {time.time() - t0:.0f}s\033[0m")
+if failed:
+    print(f"\033[31;1m==> {want - len(failed)} of {want} tickets triaged in {time.time() - t0:.0f}s; failed: {', '.join(failed)}\033[0m")
+else:
+    print(f"\033[1m==> all {want} tickets triaged in {time.time() - t0:.0f}s\033[0m")
 for iid, job_id in done.items():
     print(f"  {iid}   job: curl -s localhost:{port}/jobs/{job_id}   board: http://localhost:{mock_port}/#{iid}")
+sys.exit(1 if failed else 0)
 PY
 echo
 echo "Still running: server :$PORT, jira_mock :$MOCK_PORT, simulator (finishes on its own). Stop all: ./demo.sh stop"
+exit "$rc"

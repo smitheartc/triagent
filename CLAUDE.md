@@ -35,7 +35,7 @@ Claude (the coding assistant) is fine for writing code and docs. It is not allow
 triagent/
   CLAUDE.md              this file
   README.md              fresh-laptop quickstart: clone, set the NVIDIA key, ./demo.sh
-  demo.sh                three scenarios (or one, or a comma list) streamed at 60x into namespace demo, server + jira_mock, follows each to its comment
+  demo.sh                two scenarios (or one, or a comma list) streamed at 60x into namespace demo, server + jira_mock, follows each to its comment
   Makefile               demo, score, test, es, kibana, tools-check shortcuts
   escluster/
     docker-compose.yml   single-node Elasticsearch 8.17 + Kibana for every teammate
@@ -75,7 +75,7 @@ triagent/
 ## Running it
 
 ```bash
-# whole path for three incidents (Docker ES, server, jira_mock, 60x stream, waits for every ticket comment)
+# whole path for two incidents (Docker ES, server, jira_mock, 60x stream, waits for every ticket comment)
 ./demo.sh [scenario[,scenario...]]                                # ./demo.sh stop; logs in t/demo/
 
 # cluster

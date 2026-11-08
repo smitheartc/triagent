@@ -32,13 +32,22 @@ nano server/.env      # set NVIDIA_API_KEY=nvapi-... (one key is enough; the per
 | 1 | checks Python, Docker and the key; installs the server's packages into `.venv` | ~1 min |
 | 2 | starts Elasticsearch in Docker (first pull ~700 MB) | 2–5 min |
 | 3 | resets the `demo` namespace, starts the server (:8080) and the mock Jira (:8082) | seconds |
-| 4 | streams three failures in one simulated data center at 60x (a rack loses power, an uplink optic degrades, a release leaks memory): 5 simulated hours, tickets land ~3, 3.7 and 4.4 min in | ~4.5 min |
-| 5 | per ticket: the mock Jira raises the webhook, the agent investigates, a reviewer model checks it, remediation is written, a phone push goes out (up to three at once) | 2–5 min |
+| 4 | streams two failures in one simulated data center at 60x (a rack loses power, a host's RAID array dies): 5 simulated hours, tickets land ~3.4 and 4.5 min in | ~4.5 min |
+| 5 | per ticket: the mock Jira raises the webhook, the agent investigates, a reviewer model checks it, remediation is written, a phone push goes out; one ticket at a time, the others queue (`DEMO_PARALLEL`) | ~2 min each |
 | 6 | prints each comment posted on a mock Jira issue as it lands, with the job's cost and latency line | |
 
-You're done when the terminal prints `==> all 3 tickets triaged`. The services stay
+You're done when the terminal prints `==> all 2 tickets triaged`. The services stay
 up afterwards; `./demo.sh stop` stops them. Run one failure with `./demo.sh bad_optic`, or any comma list such as
 `./demo.sh cooling_failure,disk_fill` (list: `python3 sim/dcsim.py --list-scenarios`).
+
+**Another incident** while the demo's services are up: stream one more scenario into the `demo` namespace. The mock
+Jira raises it like the others (ticket about 4 minutes in), and nothing is reset. Use a seed other than 7: the same
+seed reuses ticket ids, which the server treats as a replay.
+
+```bash
+python3 sim/dcsim.py --scenario cooling_failure --seed 8 --namespace demo --duration 300m --fail-at 255m \
+    --stream --speed 60 --es-url http://localhost:9200 --out ''
+```
 
 While it runs:
 - `curl -s localhost:8082/issues`: the mock Jira issues and their webhook state
