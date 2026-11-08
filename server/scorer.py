@@ -25,7 +25,8 @@ Scoring (CLAUDE.md, Scoring)
                  change.configuration->certificate if entity_type is certificate else config, security.*->security
   chain overlap  Jaccard of report causal_chain event ids vs key causal_chain ids that have an event_id
   red herring    HARD FAIL if any red_herrings[].event_id is in root_cause.event_ids, or a red herring's entity
-                 is the report's cause entity or one of its identifiers
+                 is the report's cause entity or one of its identifiers (location keys such as rack, row, cluster
+                 or labels.rack don't count: a correct report names its own rack, and a red herring can share it)
   pass           cause entity and category correct and no red herring
   "none" scenarios (no root cause): pass if category is unknown and confidence <= 0.3
 """
@@ -301,6 +302,17 @@ def _strings(obj: Any) -> list[str]:
     return [str(obj)] if obj is not None else []
 
 
+# Identifier keys that only say where the cause sits (rack, row, cluster). A red herring on the same rack shares them
+# with any correct report, so they never count as naming the red herring; its event ids and entity still do.
+LOCATION_KEYS = {"row", "rack", "cluster", "datacenter", "site", "zone", "location", "namespace"}
+
+
+def _without_location(identifiers: Any) -> Any:
+    if not isinstance(identifiers, dict):
+        return identifiers
+    return {k: v for k, v in identifiers.items() if str(k).lower().rsplit(".", 1)[-1] not in LOCATION_KEYS}
+
+
 def _same_id(a: str, b: str) -> bool:
     a, b = a.strip().lower(), b.strip().lower()
     if not a or not b:
@@ -344,7 +356,8 @@ def score(scn: dict[str, Any], red_herrings: list[dict[str, Any]], result: dict[
     jaccard = round(len(key_chain & rep_chain) / len(union), 2) if union else 0.0
 
     cause_ids = set(rc.get("event_ids") or [])
-    cause_names = {str(rc.get("entity", "")).lower(), *(s.lower() for s in ident)}
+    cause_names = {str(rc.get("entity", "")).lower(),
+                   *(s.lower() for s in _strings(_without_location(rc.get("identifiers") or {})))}
     rh_hits = [h.get("type", "?") for h in red_herrings
                if (h.get("event_id") and h["event_id"] in cause_ids)
                or (h.get("entity") and str(h["entity"]).lower() in cause_names)]

@@ -47,6 +47,16 @@ def test_red_herring_is_hard_fail():
     assert by_entity["red_herring"] and not by_entity["passed"]
 
 
+
+def test_shared_rack_is_not_a_red_herring():
+    herrings = HERRINGS + [{"type": "transient_temp_spike", "entity": "A03", "event_id": "rh-2"}]
+    for ids in ({"rack": "A03"}, {"labels.rack": "a03", "interface": "Ethernet1/49"}):
+        r = scorer.score(KEY, herrings, result(identifiers=ids))
+        assert not r["red_herring"] and r["passed"], ids
+    assert scorer.score(KEY, herrings, result(entity="A03"))["red_herring"]
+    assert scorer.score(KEY, herrings, result(event_ids=["a", "rh-2"]))["red_herring"]
+    assert scorer.score(KEY, herrings, result(identifiers={"rack": "A03", "change_id": "CHG0005780"}))["red_herring"]
+
 def test_wrong_category_and_failed_run():
     assert not scorer.score(KEY, HERRINGS, result(category="deploy"))["passed"]
     failed = scorer.score(KEY, HERRINGS, {"status": "failed", "error": "boom", "seconds": 1.0})
