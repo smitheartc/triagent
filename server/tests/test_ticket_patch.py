@@ -113,6 +113,19 @@ def test_mock_comment_http_contract(mock_server):
     assert e.value.code == 404
 
 
+def test_mock_serves_the_board_and_its_row_fields(mock_server):
+    m = mock_server
+    m.scan()
+    m.add_comment("INC7000001", jira_mock.comment_payload("report", "job-1", "done"))
+    with urllib.request.urlopen(f"{m.url}/", timeout=5) as r:
+        page = r.read().decode()
+        assert r.status == 200 and r.headers["Content-Type"].startswith("text/html")
+    assert "DC-OPS triage board" in page and 'fetch("/issues")' in page and "http" not in page.split("<script>")[0]
+    row = _get(f"{m.url}/issues")[0]
+    assert row["comment_status"] == "done" and row["service"] == DOC.get("service", {}).get("name")
+    assert row["labels"] == {k: v for k, v in DOC["labels"].items() if k in ("row", "rack", "cluster")}
+
+
 # ---------------------------------------------------------------------------------------------
 # main.py: render + patch
 # ---------------------------------------------------------------------------------------------

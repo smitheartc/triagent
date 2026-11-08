@@ -15,6 +15,7 @@ What it does
         POST /issue/{ticket_id}/comment   {"body", "job_id", "status", "author"} -> 201 {"id", "issue_id", "created"}
         GET  /issue/{ticket_id}           the issue with its webhook state and comments
         GET  /issues                      every issue, newest first, without comment bodies
+        GET  /                            a Jira-style board of the issues for people (board_html.py), live
         GET  /health
 
 Issues live in memory. The server's TICKET_BACKEND=mock (default) posts to JIRA_MOCK_URL (default
@@ -35,6 +36,9 @@ import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import board_html  # noqa: E402  (the HTML for GET /, kept out of this file)
 
 log = logging.getLogger("jira_mock")
 
@@ -218,7 +222,10 @@ class Mock:
     def list_issues(self) -> list[dict[str, Any]]:
         with self.lock:
             rows = [{"id": i["id"], "title": i["title"], "priority": i["priority"], "created": i["created"],
-                     "namespace": i["namespace"], "webhook": dict(i["webhook"]), "comments": len(i["comments"]),
+                     "namespace": i["namespace"], "service": i["payload"].get("service"),
+                     "labels": i["payload"].get("labels") or {}, "webhook": dict(i["webhook"]),
+                     "comments": len(i["comments"]),
+                     "comment_status": i["comments"][-1]["status"] if i["comments"] else None,
                      "reopened": i["reopened"]} for i in self.issues.values()]
         return sorted(rows, key=lambda r: r["created"], reverse=True)
 
@@ -228,6 +235,14 @@ def make_handler(mock: Mock) -> type[BaseHTTPRequestHandler]:
     issue_re = re.compile(r"^/issue/([^/]+)/?$")
 
     class Handler(BaseHTTPRequestHandler):
+        def _html(self) -> None:
+            raw = board_html.PAGE.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
         def _send(self, status: int, body: Any) -> None:
             raw = json.dumps(body, indent=2).encode()
             self.send_response(status)
@@ -249,6 +264,8 @@ def make_handler(mock: Mock) -> type[BaseHTTPRequestHandler]:
 
         def do_GET(self) -> None:  # noqa: N802
             path = self.path.split("?", 1)[0]
+            if path in ("/", "/board", "/board/"):
+                return self._html()
             if path == "/health":
                 return self._send(200, {"ok": True, "issues": len(mock.issues), "webhook": mock.webhook})
             if path in ("/issues", "/issues/"):
