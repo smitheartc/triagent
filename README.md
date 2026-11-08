@@ -32,13 +32,13 @@ nano server/.env      # set NVIDIA_API_KEY=nvapi-... (one key is enough; the per
 | 1 | checks Python, Docker and the key; installs the server's packages into `.venv` | ~1 min |
 | 2 | starts Elasticsearch in Docker (first pull ~700 MB) | 2–5 min |
 | 3 | resets the `demo` namespace, starts the server (:8080) and the mock Jira (:8082) | seconds |
-| 4 | streams a rack power failure at 60x: 5 simulated hours, the ticket lands ~4 min in | ~4 min |
-| 5 | the mock Jira raises the webhook, the agent investigates, a reviewer model checks it, remediation is written | 2–4 min |
-| 6 | prints the comment posted on the mock Jira issue and the job's cost and latency line | |
+| 4 | streams three failures in one simulated data center at 60x (a rack loses power, an uplink optic degrades, a release leaks memory): 5 simulated hours, tickets land ~3, 3.7 and 4.4 min in | ~4.5 min |
+| 5 | per ticket: the mock Jira raises the webhook, the agent investigates, a reviewer model checks it, remediation is written, a phone push goes out (up to three at once) | 2–5 min |
+| 6 | prints each comment posted on a mock Jira issue as it lands, with the job's cost and latency line | |
 
-You're done when the terminal prints `==> comment on mock issue INC...` followed by the report. The services stay
-up afterwards; `./demo.sh stop` stops them. Run another failure with `./demo.sh bad_optic` (list:
-`python3 sim/dcsim.py --list-scenarios`).
+You're done when the terminal prints `==> all 3 tickets triaged`. The services stay
+up afterwards; `./demo.sh stop` stops them. Run one failure with `./demo.sh bad_optic`, or any comma list such as
+`./demo.sh cooling_failure,disk_fill` (list: `python3 sim/dcsim.py --list-scenarios`).
 
 While it runs:
 - `curl -s localhost:8082/issues`: the mock Jira issues and their webhook state

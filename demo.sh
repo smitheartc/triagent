@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# demo.sh: one incident live, end to end, on this machine.
+# demo.sh: incidents live, end to end, on this machine.
 #
-#   ./demo.sh                  pdu_overload (rack loses power)
-#   ./demo.sh bad_optic        any scenario from: python3 sim/dcsim.py --list-scenarios
-#   ./demo.sh stop             stop the server, jira_mock and the simulator started by an earlier run
+#   ./demo.sh                          three incidents in one stream: pdu_overload,bad_optic,memory_leak
+#                                      (a rack loses power, an uplink optic degrades, a release leaks memory)
+#   ./demo.sh bad_optic                one incident: any scenario from python3 sim/dcsim.py --list-scenarios
+#   ./demo.sh cooling_failure,disk_fill   any comma list (the server investigates up to 3 at once)
+#   ./demo.sh stop                     stop the server, jira_mock and the simulator started by an earlier run
 #
 # What it does:
 #   1. checks Python, Docker and server/.env (an NVIDIA key must be set); makes .venv on first run
@@ -11,12 +13,15 @@
 #   3. resets the "demo" namespace only (other namespaces such as dal1 are left alone) and applies the templates
 #   4. starts the server (:8080) and jira_mock (:8082, watching only the demo namespace's tickets); the mock's
 #      Jira-style board is http://localhost:8082/
-#   5. streams the scenario at 60x: 5 simulated hours, failure at 4h15m (255m), so the ticket lands about 4 minutes in
-#   6. follows the ticket: webhook -> investigation -> comment on the mock issue, then prints the comment and the
-#      job's cost and latency line. The services keep running for the app (EXPO_PUBLIC_API_URL=http://<this ip>:8080)
+#   5. streams the scenarios at 60x in one simulated data center: 5 simulated hours. One scenario fails at 4h15m
+#      (ticket about 4 minutes in); with several, dcsim spreads the failures between ~45% and 88% of the window
+#      (three: tickets about 3, 3.7 and 4.4 minutes in)
+#   6. follows every ticket: webhook -> investigation -> comment on the mock issue, printing each comment and its job's
+#      cost and latency line as it lands. Each finished ticket also sends a phone push (server/notify.py).
+#      The services keep running for the app
 #
 # Logs and the answer key go to t/demo/. Environment overrides: ES_URL, PORT, MOCK_PORT, DEMO_NAMESPACE, DEMO_SEED,
-# DEMO_SPEED, DEMO_TIMEOUT (seconds to wait for the comment, default 1200).
+# DEMO_SPEED, DEMO_TIMEOUT (seconds to wait for every ticket's comment, default 1200).
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -30,7 +35,7 @@ NS=${DEMO_NAMESPACE:-demo}
 SEED=${DEMO_SEED:-7}
 SPEED=${DEMO_SPEED:-60}
 TIMEOUT=${DEMO_TIMEOUT:-1200}
-SCENARIO=${1:-pdu_overload}
+SCENARIO=${1:-pdu_overload,bad_optic,memory_leak}
 
 say()  { printf '\033[1m==> %s\033[0m\n' "$*"; }
 die()  { printf '\033[31mdemo.sh: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -70,8 +75,13 @@ say "checking prerequisites"
 command -v python3 >/dev/null || die "python3 not found (3.10 or newer)"
 python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))' || die "python3 is $(python3 -V 2>&1); need 3.10 or newer"
 command -v curl >/dev/null || die "curl not found"
-python3 sim/dcsim.py --list-scenarios | awk '{print $1}' | grep -qx "$SCENARIO" \
-    || die "unknown scenario '$SCENARIO'; choose one of: $(python3 sim/dcsim.py --list-scenarios | awk '{print $1}' | xargs)"
+KNOWN=$(python3 sim/dcsim.py --list-scenarios | awk '{print $1}')
+IFS=, read -ra SCENARIOS <<<"$SCENARIO"
+(( ${#SCENARIOS[@]} > 0 )) || die "no scenario given"
+for sc in "${SCENARIOS[@]}"; do
+    grep -qx "$sc" <<<"$KNOWN" || die "unknown scenario '$sc'; choose from: $(xargs <<<"$KNOWN")"
+done
+N=${#SCENARIOS[@]}
 [[ -f server/.env ]] || die "server/.env missing: cp server/.env.example server/.env and set NVIDIA_API_KEY"
 grep -Eq '^NVIDIA_API_KEY(_INVESTIGATOR)?=[^[:space:]#]+' server/.env \
     || die "server/.env has no NVIDIA key: set NVIDIA_API_KEY=nvapi-... (from build.nvidia.com)"
@@ -133,17 +143,22 @@ up "http://localhost:$MOCK_PORT/health" || { tail -20 "$RUN/jira_mock.log"; die 
 say "triage board: http://localhost:$MOCK_PORT/  (open it now to watch the ticket move)"
 
 # ---------------------------------------------------------------------------- 5. stream the scenario
-say "streaming $SCENARIO at ${SPEED}x (seed $SEED): the ticket should land in about $(( 15300 / ${SPEED%.*} / 60 )) minutes"
-nohup python3 sim/dcsim.py --scenario "$SCENARIO" --seed "$SEED" --namespace "$NS" --duration 300m --fail-at 255m \
+if (( N == 1 )); then
+    FAIL_AT=(--fail-at 255m); FIRST=255                       # minutes into the 300m window
+else
+    FAIL_AT=(); FIRST=$(( 300 * (4500 + 4300 / N) / 10000 ))  # dcsim: the earliest failure is at 0.45 + 0.43/N of the window
+fi
+say "streaming $N incident(s) at ${SPEED}x (seed $SEED): $SCENARIO; the first ticket should land in about $(( (FIRST + 3) * 60 / ${SPEED%.*} / 60 )) minutes"
+nohup python3 sim/dcsim.py --scenario "$SCENARIO" --seed "$SEED" --namespace "$NS" --duration 300m ${FAIL_AT[@]+"${FAIL_AT[@]}"} \
     --stream --speed "$SPEED" --es-url "$ES_URL" --out '' \
     --answer-key "$RUN/scenario.json" --catalog "$RUN/event_catalog.json" >"$RUN/dcsim.log" 2>&1 &
 echo $! >"$RUN/dcsim.pid"
 
-# ---------------------------------------------------------------------------- 6. follow the ticket
-"$PY" - "$PORT" "$MOCK_PORT" "$TIMEOUT" "$RUN/dcsim.pid" <<'PY'
+# ---------------------------------------------------------------------------- 6. follow the tickets
+"$PY" - "$PORT" "$MOCK_PORT" "$TIMEOUT" "$RUN/dcsim.pid" "$N" <<'PY'
 import json, os, sys, time, urllib.request
 
-port, mock_port, timeout, dcsim_pid = sys.argv[1], sys.argv[2], float(sys.argv[3]), sys.argv[4]
+port, mock_port, timeout, dcsim_pid, want = sys.argv[1], sys.argv[2], float(sys.argv[3]), sys.argv[4], int(sys.argv[5])
 def get(url):
     with urllib.request.urlopen(url, timeout=10) as r:
         return json.loads(r.read())
@@ -154,46 +169,52 @@ def alive(pidfile):
     except (OSError, ValueError):
         return False
 
-t0, last, issue, job_id = time.time(), None, None, None
-while time.time() - t0 < timeout:
+t0, last, done, jobs = time.time(), {}, {}, {}
+while len(done) < want and time.time() - t0 < timeout:
     time.sleep(3)
     try:
-        issues = get(f"http://localhost:{mock_port}/issues")
+        issues = sorted(get(f"http://localhost:{mock_port}/issues"), key=lambda i: i["created"])
     except OSError:
         continue
-    if not issues:
-        if not alive(dcsim_pid):
+    if len(issues) < want and not alive(dcsim_pid):
+        if not issues:
             sys.exit("the simulator exited without a ticket; see t/demo/dcsim.log")
-        msg = "simulator streaming, waiting for the ticket"
-    else:
-        issue = issues[0]
-        wh = issue["webhook"]
-        job_id = wh.get("job_id") or job_id
+        print(f"  the simulator finished with {len(issues)} of {want} tickets", flush=True)
+        want = len(issues)
+    if not issues and last.get(None) is None:
+        print(f"  {time.strftime('%H:%M:%S')}  simulator streaming, waiting for the first ticket", flush=True)
+        last[None] = True
+    for issue in issues:
+        iid, wh = issue["id"], issue["webhook"]
+        if iid in done:
+            continue
+        job_id = jobs[iid] = wh.get("job_id") or jobs.get(iid)
         status = ""
         if job_id:
             try:
                 status = get(f"http://localhost:{port}/jobs/{job_id}")["status"]
             except OSError:
                 pass
-        msg = f"{issue['id']} [{issue['priority']}] {issue['title']} | webhook {wh['state']}" + \
+        msg = f"{iid} [{issue['priority']}] {issue['title']} | webhook {wh['state']}" + \
               (f" | job {job_id} {status}" if job_id else "")
+        if msg != last.get(iid):
+            print(f"  {time.strftime('%H:%M:%S')}  {msg}", flush=True)
+            last[iid] = msg
         if issue["comments"]:
-            break
-    if msg != last:
-        print(f"  {time.strftime('%H:%M:%S')}  {msg}", flush=True)
-        last = msg
-else:
-    sys.exit(f"no comment after {timeout:.0f}s; logs in t/demo/ (server.log, jira_mock.log, dcsim.log)")
+            full = get(f"http://localhost:{mock_port}/issue/{iid}")
+            job = get(f"http://localhost:{port}/jobs/{job_id}")
+            cost = next((e["message"] for e in reversed(job["trace"])
+                         if (e.get("message") or "").startswith("cost and latency")), "")
+            print(f"\n\033[1m==> comment on mock issue {iid} ({len(done) + 1} of {want}) after {time.time() - t0:.0f}s\033[0m\n")
+            print(full["comments"][-1]["body"])
+            print(f"\n\033[1m==> {cost}\033[0m\n", flush=True)
+            done[iid] = job_id
+if len(done) < want:
+    sys.exit(f"{len(done)} of {want} tickets commented after {timeout:.0f}s; logs in t/demo/ (server.log, jira_mock.log, dcsim.log)")
 
-full = get(f"http://localhost:{mock_port}/issue/{issue['id']}")
-job = get(f"http://localhost:{port}/jobs/{job_id}")
-cost = next((e["message"] for e in reversed(job["trace"]) if (e.get("message") or "").startswith("cost and latency")), "")
-print(f"\n\033[1m==> comment on mock issue {issue['id']} after {time.time() - t0:.0f}s\033[0m\n")
-print(full["comments"][-1]["body"])
-print(f"\n\033[1m==> {cost}\033[0m")
-print(f"\nJob JSON:     curl -s localhost:{port}/jobs/{job_id}")
-print(f"Mock issue:   curl -s localhost:{mock_port}/issue/{issue['id']}")
-print(f"Board:        http://localhost:{mock_port}/#{issue['id']}")
+print(f"\033[1m==> all {want} tickets triaged in {time.time() - t0:.0f}s\033[0m")
+for iid, job_id in done.items():
+    print(f"  {iid}   job: curl -s localhost:{port}/jobs/{job_id}   board: http://localhost:{mock_port}/#{iid}")
 PY
 echo
 echo "Still running: server :$PORT, jira_mock :$MOCK_PORT, simulator (finishes on its own). Stop all: ./demo.sh stop"
