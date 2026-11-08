@@ -8,6 +8,8 @@ Sections and their entry points (Python, all under server/)
   llm.py            chat(messages, tools=None, model=None, thinking=True, max_tokens=4096, seed=None, trace=None,
                          role="investigator"|"critic"|"small") -> llm.ChatResult       (only module importing openai)
   investigator.py   run(ticket: dict, es_tools, trace: Trace, max_calls=20, *, seed=None, feedback=None) -> Report dict
+                    ask(job: dict, question: str, es_tools, trace: Trace, max_calls=8, *, seed=None)
+                        -> {"answer": str, "event_ids": [str]}   (follow-up: stored report + trace as context)
   critic.py         run(report: dict, ticket: dict, es_tools, trace: Trace) -> CriticReview dict
   remediate.py      run(report: dict, trace: Trace, ticket: dict | None = None) -> Remediation dict
   main.py           FastAPI; owns the job registry; runs investigator -> critic -> remediate -> store -> ticket patch
@@ -29,6 +31,10 @@ HTTP API (main.py; fake_server.py serves the identical API with scripted jobs, n
           event: done|failed\\ndata: <SSETerminal JSON>\\n\\n
         a line ": keepalive" every 15 s while idle
   POST /jobs/{job_id}/actions   body ActionRequest -> Action              Actions (approve | escalate | ask)
+  POST /jobs/{job_id}/ask       body AskRequest -> Action (state queued)  follow-up; /actions with type ask is the same
+        409 unless the job is done. The answer arrives on the same Action (matched by id) in GET /jobs/{job_id}:
+        state queued -> answering -> answered (answer, event_ids) | failed (error). The job's status stays done; the
+        follow-up's trace entries carry phase "ask" and end with an "action" entry holding the final Action.
   GET  /scores/latest           -> ScoreRun (404 until a scorer run exists)   Scoreboard
   POST /devices                 body DeviceRegistration -> {"ok": true}   Expo push token
   GET  /health                  -> Health
@@ -54,11 +60,11 @@ Category = Literal["cooling", "power", "network", "storage", "memory", "deploy",
                    "security", "unknown"]
 JobStatus = Literal["queued", "running", "critic", "remediating", "done", "failed"]
 TERMINAL_STATUSES = ("done", "failed")
-Phase = Literal["investigate", "critic", "retry", "critic_retry"]
+Phase = Literal["investigate", "critic", "retry", "critic_retry", "ask"]
 TraceKind = Literal["status", "llm", "tool", "finding", "verify", "info", "error", "assistant", "critic",
                     "remediation", "action"]
 TOOL_NAMES = ("search_events", "aggregate", "metric_series", "find_changes", "expand_scope", "get_doc",
-              "note_finding", "submit_report")
+              "note_finding", "submit_report", "answer_question")   # answer_question ends a follow-up only
 PIVOT_FIELDS = ("host.name", "labels.row", "labels.rack", "labels.cluster", "service.name", "observer.name",
                 "user.name", "source.ip", "change.id", "kubernetes.pod.name", "event.code", "event.id")
 CRITIC_CHECKS = ("ids_exist", "chain_time_order", "root_cause_concrete", "adjacent_steps_linked",
@@ -69,6 +75,7 @@ MAX_SERIES_POINTS = 60      # metric_series points
 MESSAGE_TRIM = 200          # chars of message in a result row
 TRACE_RESULT_TRIM = 500     # chars of a tool result kept in a trace entry
 DEFAULT_MAX_TOOL_CALLS = 20
+DEFAULT_ASK_MAX_CALLS = 8   # follow-up budget, answer_question included
 
 
 class _Open(BaseModel):
@@ -234,9 +241,19 @@ class Action(BaseModel):
     type: Literal["approve", "escalate", "ask"]
     by: str = "demo"
     note: str | None = None               # approve / escalate comment
-    question: str | None = None           # ask: follow-up question (re-entering the investigator is a later step)
+    question: str | None = None           # ask: the follow-up question
     ts: str
-    state: Literal["recorded", "queued", "not_implemented"] = "recorded"
+    state: Literal["recorded", "queued", "answering", "answered", "failed", "not_implemented"] = "recorded"
+    id: str | None = None                 # ask: stable id to find this action again in GET /jobs/{job_id}
+    answer: str | None = None             # ask, state answered: the investigator's answer
+    event_ids: list[str] = Field(default_factory=list)   # ask: event ids the answer cites, verified in the cluster
+    error: str | None = None              # ask, state failed: why
+
+
+class AskRequest(BaseModel):
+    """Body of POST /jobs/{job_id}/ask."""
+    question: str = Field(min_length=1)
+    by: str = "demo"
 
 
 class ActionRequest(BaseModel):
@@ -404,7 +421,7 @@ ChatFn = Callable[..., Any]   # llm.chat signature (see the header); fakes.fake_
 # JSON Schema export for the app
 # ---------------------------------------------------------------------------------------------
 APP_MODELS = (Ticket, Report, Job, JobSummary, TraceEntry, CriticResult, Remediation, Action, ActionRequest,
-              EnqueueResponse, SSETerminal, DeviceRegistration, PushMessage, Health, ScoreRun)
+              EnqueueResponse, SSETerminal, DeviceRegistration, PushMessage, Health, ScoreRun, AskRequest)
 
 
 def json_schema() -> dict[str, Any]:
