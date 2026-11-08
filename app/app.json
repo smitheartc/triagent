@@ -36,6 +36,12 @@
           }
         }
       ]
-    ]
+    ],
+    "owner": "triagent",
+    "extra": {
+      "eas": {
+        "projectId": "e66800b6-a900-4471-ab42-670ab7b72591"
+      }
+    }
   }
 }

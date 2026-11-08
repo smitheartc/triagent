@@ -1,12 +1,13 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-import type { Job, JobSummary } from './contracts';
+import type { DeviceRegistration, Job, JobSummary } from './contracts';
 
 /**
  * Read-only Supabase access to the jobs table that server/store.py writes on every status change.
  *
  * Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (app/.env) to turn it on. The publishable key
- * can only select from `jobs` (row-level security; devices and writes stay server-side), so it is safe in the bundle.
+ * can only select from `jobs` and insert into `devices` (row-level security in server/store.py STORE_SQL; it can't read
+ * tokens back or write jobs), so it is safe in the bundle.
  * Without them `supabase` is null and the app reads everything from the server's HTTP API, as before.
  */
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -56,4 +57,16 @@ export function watchJobs(onChange: () => void, onLive: (live: boolean) => void)
   return () => {
     sb.removeChannel(channel);
   };
+}
+
+/**
+ * Adds this device's push token to the devices table the server pushes to (store.devices()), so a phone that can't
+ * reach the server still gets notified. A plain insert, with "already registered" (23505) counted as success: the anon
+ * key may insert but not read devices, and Postgres checks select policies for an upsert (ON CONFLICT), so that fails.
+ */
+export async function supabaseRegisterDevice(reg: DeviceRegistration): Promise<void> {
+  const { error } = await client()
+    .from('devices')
+    .insert({ expo_push_token: reg.expo_push_token, platform: reg.platform ?? null });
+  if (error && error.code !== '23505') throw new Error(`Supabase: ${error.message}`);
 }

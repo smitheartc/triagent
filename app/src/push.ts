@@ -5,13 +5,16 @@ import type { NotificationResponse } from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { api } from './api';
+import type { DeviceRegistration } from './contracts';
+import { supabase, supabaseRegisterDevice } from './supabase';
 
 // Expo Go dropped remote push on Android in SDK 53 (a development build has it), and web push is not set up.
 const SUPPORTED = Platform.OS === 'ios' || (Platform.OS === 'android' && !isRunningInExpoGo());
 
 /**
- * Registers this device's Expo push token with POST /devices and opens Incident detail when a notification is
- * tapped (PushMessage.data.job_id). Best effort: anything missing (permission, EAS projectId) only logs.
+ * Registers this device's Expo push token in Supabase's devices table (when configured; works from any network) and
+ * with POST /devices (works without Supabase), and opens Incident detail when a notification is tapped
+ * (PushMessage.data.job_id). Best effort: anything missing (permission, EAS projectId, a route) only logs.
  */
 export function setUpPush(): () => void {
   if (!SUPPORTED) return () => {};
@@ -52,7 +55,15 @@ export function setUpPush(): () => void {
       if (status !== 'granted') ({ status } = await Notifications.requestPermissionsAsync());
       if (status !== 'granted') return;
       const token = await Notifications.getExpoPushTokenAsync({ projectId });
-      await api.registerDevice({ expo_push_token: token.data, platform: Platform.OS === 'ios' ? 'ios' : 'android' });
+      const reg: DeviceRegistration = { expo_push_token: token.data, platform: Platform.OS === 'ios' ? 'ios' : 'android' };
+      const routes: [string, Promise<unknown>][] = [['server', api.registerDevice(reg)]];
+      if (supabase) routes.unshift(['supabase', supabaseRegisterDevice(reg)]);
+      const results = await Promise.allSettled(routes.map(([, p]) => p));
+      results.forEach((r, i) => {
+        const why = r.status === 'rejected' ? (r.reason instanceof Error ? r.reason.message : String(r.reason)) : '';
+        if (why) console.warn(`push: token not registered via ${routes[i][0]}:`, why);
+      });
+      if (results.every((r) => r.status === 'rejected')) console.warn('push: this device will not get notifications');
     })
     .catch((err) => console.warn('push: not registered:', err instanceof Error ? err.message : err));
 
