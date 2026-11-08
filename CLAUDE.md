@@ -41,6 +41,7 @@ triagent/
     docker-compose.yml   single-node Elasticsearch 8.17 + Kibana for every teammate
     es_setup.py          ILM + component/index templates + Kibana data views, idempotent, stdlib only
     kibana_demo.py       two judge dashboards (whole data center; the rack B03 power incident), stdlib only
+    remote.sh            ES + Kibana on a remote SSH host (NVIDIA Brev), reached via an SSH tunnel on localhost
   sim/
     dcsim.py             simulator (rules in sim/CLAUDE.md, read it before touching the simulator)
     CLAUDE.md            simulator rules; authoritative for everything under sim/
@@ -62,6 +63,7 @@ triagent/
     tools_check.py       no-LLM harness: every tool against every ticket in the cluster
     remediate_check.py   every category's remediation names the entity type and a command or console action
     jira_mock.py         watches ES for ticket docs, raises webhooks, accepts comment patches (stdlib only)
+    board_html.py        the Jira-style board jira_mock serves at GET / (one self-contained page)
     templates/           ticket_comment.md / ticket_comment_failed.md, filled by main.patch_ticket()
     store.py             Supabase upsert of each job on every status change, devices table, reload at startup
     notify.py            Expo push when a webhook job finishes (prompts/summarize.md on the small model)
@@ -199,6 +201,8 @@ The accuracy table is a demo slide. Keep the scorer runnable from a clean checko
 
 - Tickets already in ES when the mock starts are processed too (`--skip-existing` to ignore them); webhooks retry until the server answers, so start order does not matter. Issues live in memory.
 - dcsim reuses ticket ids for the same seed. A new ticket doc for a known id (re-ingest, second `--stream` run) reopens the issue, and the server dedupes on `ticket_id` + `created`, so it gets a fresh investigation. An exact replay (same `--start`) is a duplicate: restart the server to re-run it.
+- `GET /` on the mock is a live board for people (columns New, Triagent investigating, Triaged, Needs a human;
+  click a card for the ticket and the report comment; `/#<ticket id>` links one issue). The JSON routes stay as they are.
 - Only jobs that arrived on `/webhook` comment; `/investigate` (curl, scorer) never does. A failed patch is a trace `error` entry, never a failed job. The comment text is `server/templates/ticket_comment*.md`.
 
 ## Mobile app

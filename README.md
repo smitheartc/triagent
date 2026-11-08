@@ -54,16 +54,35 @@ Shortcuts in the `Makefile` (`sudo apt install make` if it is missing; `make hel
 
 | command | what it does |
 |---|---|
-| `make score` | the accuracy table: every scenario through the pipeline against the answer key (`RUNS=1` for a quick pass, ~30 min at `PARALLEL=2`; loads seed 7 into namespace `dal1` the first time). Writes `t/scores/<time>.md` |
-| `make es` | Elasticsearch **and Kibana** (:5601) |
+| `make score` | the accuracy table: every scenario through the pipeline against the answer key (`RUNS=1` for a quick pass, ~30 min at `PARALLEL=2`; loads seed 7 into namespace `dal1` the first time; `INGEST=1` reloads it, needed on a new or reset cluster). Writes `t/scores/<time>.md` |
+| `make es` | Elasticsearch **and Kibana** (:5601) locally; from WSL without Docker integration, `make es DOCKER=docker.exe` |
 | `make kibana` | two Kibana dashboards for judges: the whole simulated data center, and one incident start to finish. Needs the `dal1` data `make score` loads |
 | `make test` | server unit tests, no network |
+| `make server` / `make fake-server` | the real server on :8080 with auto-reload, or the scripted one for app work (no Elasticsearch or NVIDIA key) |
+| `make remote HOST=<brev>` | Elasticsearch + Kibana on a Brev instance, tunnelled to localhost (see below); `make tunnel` / `make remote-status` later |
 | `make tools-check` | every Elasticsearch tool against every ticket in the cluster, no model calls (run this first when the agent looks wrong) |
 
 The phone app (Expo) is in `app/`; see `app/README.md`. Point it at `http://<this machine's LAN IP>:8080`.
 
 How it fits together, the rules for changing it, and the build status are in `CLAUDE.md`. The simulator's rules are
 in `sim/CLAUDE.md`.
+
+## Elasticsearch on a remote machine (NVIDIA Brev)
+
+The cluster can run on a Brev instance (or any SSH host with Docker) instead of this laptop. An SSH tunnel brings it
+back to `localhost:9200` and `localhost:5601`, so nothing else changes: same `server/.env`, same `./demo.sh`, same
+scorer. The remote ports are bound to 127.0.0.1 there, so the security-off cluster is never on the internet.
+
+```bash
+brev login && brev refresh          # once: Brev CLI, adds your instances to ~/.ssh/config (brev ls shows names)
+docker compose -f escluster/docker-compose.yml stop    # free local 9200/5601 if a local cluster runs (data kept)
+escluster/remote.sh up <instance>   # copy the compose file, start ES + Kibana there, open the tunnel (leave it open)
+```
+
+In a second terminal, load data through the tunnel the first time: `./demo.sh` for the demo namespace, and
+`python3 server/scorer.py --ingest --runs 1` for the scored `dal1` data (then `make kibana`). Later sessions only need
+`escluster/remote.sh tunnel <instance>`. `status` and `down` do what they say. Elasticsearch needs no GPU, so a CPU
+instance is enough if Brev offers one; every tool call crosses the tunnel, so investigations run a little slower.
 
 ## Troubleshooting
 
@@ -74,4 +93,6 @@ in `sim/CLAUDE.md`.
   `PORT=8090 ./demo.sh` (the mock Jira port is `MOCK_PORT`).
 - **The job stays `running` for many minutes**: NVIDIA rate limits (HTTP 429). The client retries with back-off; check
   `t/demo/server.log`. Fewer parallel jobs (`TRIAGENT_MAX_PARALLEL_JOBS=1` in `server/.env`) helps.
+- **`something already answers on localhost:9200`** from `remote.sh`: a local cluster is still running; stop it
+  (`docker compose -f escluster/docker-compose.yml stop`).
 - **Ticket never appears**: `t/demo/dcsim.log` (simulator) and `t/demo/jira_mock.log`.
