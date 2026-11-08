@@ -217,3 +217,32 @@ def test_devices_route_saves_token_to_supabase(monkeypatch, supa, tmp_path):
     finally:
         main.app.state.store_writer = before
     assert r.json() == {"ok": True} and supa.devices["ExponentPushToken[x]"]["platform"] == "ios"
+
+
+def test_push_body_carries_the_remediation_steps(monkeypatch):
+    _summary(monkeypatch, text="PDU pdu-b03-a breaker tripped; rack B03 hosts down.")
+    loop = asyncio.new_event_loop()
+    job = main.Job(job_id="job-s", ticket=jira_mock.payload_from_doc(DOC), loop=loop, origin="webhook")
+    job.status, job.report = "done", REPORT
+    job.remediation = {"covered": True, "immediate": [f"Step {i} on PDU pdu-b03-a: run `pdu reset`" for i in range(1, 7)],
+                       "verify": [], "prevent": [], "rollback_risk": "low"}
+    body = notify.body_for(job)
+    lines = body.split("\n")
+    assert lines[0] == "PDU pdu-b03-a breaker tripped; rack B03 hosts down." and lines[1] == ""
+    assert lines[2] == "Do now:" and lines[3].startswith("1. Step 1 on PDU pdu-b03-a")
+    assert len([x for x in lines if x[:2] in {f"{i}." for i in range(1, 10)}]) == notify.STEPS_MAX
+    assert lines[-1] == "(+2 more in the app)" and len(body) <= notify.PUSH_BODY_MAX
+
+    job.remediation = {**job.remediation, "covered": False, "immediate": ["Page the facilities on-call"]}
+    assert notify.steps(job) == "Not in the runbook. Safe triage:\n1. Page the facilities on-call"
+
+    job.remediation = {**job.remediation, "immediate": ["x" * 2000] * 4}
+    assert len(notify.body_for(job)) <= notify.PUSH_BODY_MAX
+
+
+def test_push_body_without_remediation_is_the_summary_alone(monkeypatch):
+    _summary(monkeypatch, text="PDU pdu-b03-a breaker tripped.")
+    loop = asyncio.new_event_loop()
+    job = main.Job(job_id="job-t", ticket=jira_mock.payload_from_doc(DOC), loop=loop, origin="webhook")
+    job.status, job.report = "done", REPORT
+    assert notify.body_for(job) == "PDU pdu-b03-a breaker tripped."

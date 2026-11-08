@@ -1,12 +1,15 @@
-"""Expo push when a job finishes: title from the ticket, body from prompts/summarize.md on the small model.
+"""Expo push when a job finishes: title from the ticket, body = a summary line plus the remediation steps.
 
     push(job, tokens=None) -> list[PushMessage dicts], one per device it was sent to
 
 tokens defaults to the devices in Supabase (store.devices()). main.py passes the union of those and the tokens
 registered with POST /devices since the server started, so pushes work with or without Supabase.
 
-The body comes from the small model with reasoning off (TRIAGENT_MODEL_SMALL). If that call fails, a fixed sentence
-built from the report is used instead; a push never waits on a retry loop. PushMessage.data carries job_id (the app
+The body's first line comes from prompts/summarize.md on the small model with reasoning off (TRIAGENT_MODEL_SMALL); if
+that call fails, a fixed sentence built from the report is used instead, and a push never waits on a retry loop. Under it
+go the remediation's immediate steps, numbered and copied verbatim (runbook-grounded, no second model pass), so the
+notification alone tells the on-call what to do: the phone needs no route to the server. The lock screen shows the
+first line; expanding the notification shows the steps. PushMessage.data carries job_id (the app
 opens Incident detail on tap) and status. Expo answers per message; a DeviceNotRegistered error is logged in the
 trace so a stale token is visible.
 
@@ -29,7 +32,10 @@ log = logging.getLogger("triagent.notify")
 
 EXPO_PUSH_URL = os.environ.get("EXPO_PUSH_URL") or "https://exp.host/--/api/v2/push/send"
 PROMPT = (Path(__file__).parent / "prompts" / "summarize.md").read_text(encoding="utf-8")
-BODY_MAX = 178          # what a lock screen shows before truncating
+BODY_MAX = 178          # the summary line: what a lock screen shows before truncating
+STEPS_MAX = 4          # immediate remediation steps in the body
+STEP_MAX = 240         # characters per step
+PUSH_BODY_MAX = 1400   # whole body; Expo caps the whole message at 4 KB
 EXPO_BATCH = 100        # Expo accepts at most 100 messages per request
 
 
@@ -44,9 +50,9 @@ def title_for(job: Any) -> str:
     return f"{head}: cause found ({rc['category']})"
 
 
-def _clip(text: str) -> str:
+def _clip(text: str, limit: int = BODY_MAX) -> str:
     text = " ".join(text.split())
-    return text if len(text) <= BODY_MAX else text[:BODY_MAX - 1].rstrip() + "…"
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
 
 
 def fallback_body(job: Any) -> str:
@@ -61,10 +67,8 @@ def summarize(job: Any) -> str:
     if job.status != "done" or not job.report:
         return fallback_body(job)
     r = job.report
-    rem = job.remediation or {}
     facts = {"ticket": {k: job.ticket.get(k) for k in ("title", "priority", "service", "host")},
-             "problem": r.get("problem"), "root_cause": r.get("root_cause"), "confidence": r.get("confidence"),
-             "first_remediation_step": (rem.get("immediate") or [None])[0]}
+             "problem": r.get("problem"), "root_cause": r.get("root_cause"), "confidence": r.get("confidence")}
     try:
         res = llm.chat([{"role": "system", "content": PROMPT},
                         {"role": "user", "content": f"Report:\n{facts}"}],
@@ -76,8 +80,32 @@ def summarize(job: Any) -> str:
         return fallback_body(job)
 
 
+def steps(job: Any) -> str:
+    """The remediation's immediate steps as numbered lines, or "" when there are none (failed job, no remediation)."""
+    rem = job.remediation or {}
+    todo = [_clip(str(x), STEP_MAX) for x in (rem.get("immediate") or [])[:STEPS_MAX] if str(x).strip()]
+    if not todo:
+        return ""
+    head = "Do now:" if rem.get("covered", True) else "Not in the runbook. Safe triage:"
+    more = len(rem.get("immediate") or []) - len(todo)
+    lines = [head, *(f"{i}. {x}" for i, x in enumerate(todo, 1))]
+    if more > 0:
+        lines.append(f"(+{more} more in the app)")
+    return "\n".join(lines)
+
+
+def body_for(job: Any) -> str:
+    """Summary line, then the steps. Cut at whole lines to stay under PUSH_BODY_MAX."""
+    lines = [summarize(job)]
+    if s := steps(job):
+        lines += ["", *s.split("\n")]
+    while len(lines) > 1 and len("\n".join(lines)) > PUSH_BODY_MAX:
+        lines.pop()
+    return "\n".join(lines).rstrip()
+
+
 def build(job: Any, tokens: Iterable[str]) -> list[dict[str, Any]]:
-    title, body = title_for(job), summarize(job)
+    title, body = title_for(job), body_for(job)
     return [PushMessage(to=t, title=title, body=body, data={"job_id": job.job_id, "status": job.status}).model_dump()
             for t in dict.fromkeys(tokens)]
 
