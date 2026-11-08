@@ -9,7 +9,8 @@
 #   1. checks Python, Docker and server/.env (an NVIDIA key must be set); makes .venv on first run
 #   2. starts Elasticsearch (escluster/docker-compose.yml) if nothing answers on $ES_URL
 #   3. resets the "demo" namespace only (other namespaces such as dal1 are left alone) and applies the templates
-#   4. starts the server (:8080) and jira_mock (:8082, watching only the demo namespace's tickets)
+#   4. starts the server (:8080) and jira_mock (:8082, watching only the demo namespace's tickets); the mock's
+#      Jira-style board is http://localhost:8082/
 #   5. streams the scenario at 60x: 5 simulated hours, failure at 4h15m (255m), so the ticket lands about 4 minutes in
 #   6. follows the ticket: webhook -> investigation -> comment on the mock issue, then prints the comment and the
 #      job's cost and latency line. The services keep running for the app (EXPO_PUBLIC_API_URL=http://<this ip>:8080)
@@ -35,17 +36,28 @@ say()  { printf '\033[1m==> %s\033[0m\n' "$*"; }
 die()  { printf '\033[31mdemo.sh: %s\033[0m\n' "$*" >&2; exit 1; }
 up()   { curl -fsS -m 3 "$1" >/dev/null 2>&1; }
 
+kill_tree() {   # the process and everything it started (uvicorn can sit one level below the recorded pid)
+    local child
+    for child in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$child"; done
+    kill "$1" 2>/dev/null || true
+}
+
 stop_all() {
     local name pid
     for name in dcsim jira_mock server; do
         [[ -f "$RUN/$name.pid" ]] || continue
         pid=$(cat "$RUN/$name.pid")
         if kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" 2>/dev/null || true
+            kill_tree "$pid"
             echo "stopped $name (pid $pid)"
         fi
         rm -f "$RUN/$name.pid"
     done
+    for _ in $(seq 1 20); do      # wait until the ports are free again
+        up "http://localhost:$PORT/health" || up "http://localhost:$MOCK_PORT/health" || return 0
+        sleep 0.5
+    done
+    echo "warning: something still answers on :$PORT or :$MOCK_PORT" >&2
 }
 
 if [[ "$SCENARIO" == "stop" ]]; then
@@ -106,16 +118,19 @@ up "http://localhost:$PORT/health" && die "something already answers on :$PORT; 
 up "http://localhost:$MOCK_PORT/health" && die "something already answers on :$MOCK_PORT; stop it or run with MOCK_PORT=..."
 
 say "starting the server on :$PORT"
+# exec: the subshell becomes uvicorn, so $! is the pid that holds the port
 (cd server && ES_URL="$ES_URL" TICKET_BACKEND=mock JIRA_MOCK_URL="http://localhost:$MOCK_PORT" \
-    nohup "$PY" -m uvicorn main:app --host 0.0.0.0 --port "$PORT" >"$RUN/server.log" 2>&1 & echo $! >"$RUN/server.pid")
+    exec nohup "$PY" -m uvicorn main:app --host 0.0.0.0 --port "$PORT" >"$RUN/server.log" 2>&1) &
+echo $! >"$RUN/server.pid"
 for _ in $(seq 1 30); do up "http://localhost:$PORT/health" && break; sleep 1; done
 up "http://localhost:$PORT/health" || { tail -20 "$RUN/server.log"; die "server did not start (t/demo/server.log)"; }
 
 say "starting jira_mock on :$MOCK_PORT (tickets from namespace $NS)"
-nohup "$PY" server/jira_mock.py --es-url "$ES_URL" --webhook "http://localhost:$PORT/webhook" --port "$MOCK_PORT" \
+nohup "$PY" server/jira_mock.py --es-url "$ES_URL" --webhook "http://localhost:$PORT/webhook" --port "$MOCK_PORT" --host 0.0.0.0 \
     --index "logs-incident.tickets-$NS" >"$RUN/jira_mock.log" 2>&1 & echo $! >"$RUN/jira_mock.pid"
 for _ in $(seq 1 15); do up "http://localhost:$MOCK_PORT/health" && break; sleep 1; done
 up "http://localhost:$MOCK_PORT/health" || { tail -20 "$RUN/jira_mock.log"; die "jira_mock did not start"; }
+say "triage board: http://localhost:$MOCK_PORT/  (open it now to watch the ticket move)"
 
 # ---------------------------------------------------------------------------- 5. stream the scenario
 say "streaming $SCENARIO at ${SPEED}x (seed $SEED): the ticket should land in about $(( 15300 / ${SPEED%.*} / 60 )) minutes"
@@ -178,6 +193,7 @@ print(full["comments"][-1]["body"])
 print(f"\n\033[1m==> {cost}\033[0m")
 print(f"\nJob JSON:     curl -s localhost:{port}/jobs/{job_id}")
 print(f"Mock issue:   curl -s localhost:{mock_port}/issue/{issue['id']}")
+print(f"Board:        http://localhost:{mock_port}/#{issue['id']}")
 PY
 echo
 echo "Still running: server :$PORT, jira_mock :$MOCK_PORT, simulator (finishes on its own). Stop all: ./demo.sh stop"
