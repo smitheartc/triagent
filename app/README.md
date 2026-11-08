@@ -91,6 +91,39 @@ Registration is skipped until these exist:
 A development build talks plain `http://` to the LAN server, so Android needs cleartext traffic allowed
 (`expo-build-properties` with `android.usesCleartextTraffic`); Expo Go already allows it.
 
+## iPhone with Expo Go, from any machine
+
+No Apple Developer account needed: Expo Go (App Store) runs the app, and push works there through Expo's own Apple
+credentials. Any machine can serve it, at home or elsewhere, through Expo's tunnel; the iPhone can be on any network.
+The phone talks only to Supabase (Inbox, Incident detail, push registration). The demo machine's server sends the
+pushes through Expo and needs no route to the phone.
+
+On the serving machine, once:
+
+```bash
+git clone https://github.com/smitheartc/triagent.git && cd triagent/app && npm ci
+cp .env.example .env    # set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+echo 'EXPO_PUBLIC_API_URL=http://localhost:8080' >> .env
+```
+
+`EXPO_PUBLIC_API_URL=http://localhost:8080` makes server calls fail at once on the phone (nothing listens there), so
+every screen goes straight to Supabase. Without it the app would try port 8080 on the tunnel host and wait out a 10 s
+timeout on each load. The live trace and the actions need the server and stay unavailable this way.
+
+Then, and whenever the machine restarts:
+
+```bash
+npm run phone           # npx expo start --tunnel; the first run offers to install @expo/ngrok, say yes
+```
+
+On the iPhone: install Expo Go, scan the QR code with the Camera app, allow notifications when asked. Expo Go keeps
+the project in its Recently opened list. The tunnel address stays the same on that machine (Expo keeps it in
+`.expo/settings.json`), so later it opens from there as long as `npm run phone` is running. Leave it running
+during the demo: Expo Go reloads from the serving machine.
+
+Check it worked: a row with `platform = ios` appears in Supabase's `devices` table (Table Editor), and the next
+finished ticket from `./demo.sh` buzzes the phone.
+
 ## Android APK
 
 One-time setup (nothing here is committed: `google-services.json` and the service-account key are gitignored):
@@ -105,8 +138,11 @@ One-time setup (nothing here is committed: `google-services.json` and the servic
    npx eas-cli env:set --environment preview --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json --visibility secret
    npx eas-cli env:set --environment preview --name EXPO_PUBLIC_SUPABASE_URL --value https://<project>.supabase.co --visibility plaintext
    npx eas-cli env:set --environment preview --name EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY --value sb_publishable_... --visibility plaintext
-   npx eas-cli env:set --environment preview --name EXPO_PUBLIC_API_URL --value http://<laptop LAN IP>:8080 --visibility plaintext
    ```
+
+   `EXPO_PUBLIC_API_URL` is optional and left unset for the demo APK. Without a server the phone still gets the push,
+   whose expanded text has the cause and the first remediation steps; the Inbox and Incident detail come from Supabase.
+   Only the live trace and the actions need the server (`--name EXPO_PUBLIC_API_URL --value http://<host>:8080`).
 
 Build and install: `npx eas-cli build -p android --profile preview`, then open the link it prints on the phone.
 `EXPO_PUBLIC_*` values are baked in at build time, so a new server address means a new build.

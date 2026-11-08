@@ -27,6 +27,7 @@
   },
   "scripts": {
     "start": "expo start",
+    "phone": "expo start --tunnel",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
