@@ -158,6 +158,16 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
 TOOL_NAMES = [t["function"]["name"] for t in TOOL_SCHEMAS]
 SUBMIT_SCHEMA = next(t for t in TOOL_SCHEMAS if t["function"]["name"] == "submit_report")
 
+# Follow-ups (investigator.ask) end with answer_question instead of submit_report. Kept out of TOOL_SCHEMAS so the
+# first investigation never sees it.
+ANSWER_SCHEMA = _fn("answer_question", "Answer the engineer's follow-up question. Ends the follow-up.",
+                    {"answer": {"type": "string", "description": "A direct answer in a few sentences, plain text."},
+                     "event_ids": {**_EIDS, "description": "event.id values that support the answer; only ids "
+                                   "you retrieved or that appear in the earlier report or trace."},
+                     "confidence": {"type": "number", "minimum": 0, "maximum": 1}},
+                    ["answer", "event_ids"])
+ASK_TOOL_SCHEMAS = [t for t in TOOL_SCHEMAS if t["function"]["name"] != "submit_report"] + [ANSWER_SCHEMA]
+
 
 # ---------------------------------------------------------------------------------------------
 # helpers

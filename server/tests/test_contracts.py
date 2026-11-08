@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -125,9 +126,18 @@ def test_fake_server_investigate_actions_scores_devices(fake_client):
     assert act.state == "recorded"
     ask = C.Action.model_validate(c.post(f"/jobs/{enq.job_id}/actions",
                                          json={"type": "ask", "question": "why lb-1?"}).json())
-    assert ask.state == "not_implemented"
+    assert ask.state == "queued" and ask.id
+    ask2 = C.Action.model_validate(c.post(f"/jobs/{enq.job_id}/ask", json={"question": "Why was it rejected?"}).json())
     assert c.post(f"/jobs/{enq.job_id}/actions", json={"type": "ask"}).status_code == 422
-    assert len(C.Job.model_validate(c.get(f"/jobs/{enq.job_id}").json()).actions) == 2
+    assert c.post(f"/jobs/{enq.job_id}/ask", json={"question": ""}).status_code == 422
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        actions = {a.id: a for a in C.Job.model_validate(c.get(f"/jobs/{enq.job_id}").json()).actions if a.id}
+        if all(actions[i].state == "answered" for i in (ask.id, ask2.id)):
+            break
+        time.sleep(0.02)
+    assert actions[ask2.id].answer and actions[ask2.id].event_ids      # a rejected candidate, with its ids
+    assert len(C.Job.model_validate(c.get(f"/jobs/{enq.job_id}").json()).actions) == 3
 
     C.ScoreRun.model_validate(c.get("/scores/latest").json())
     assert c.post("/devices", json={"expo_push_token": "ExponentPushToken[x]", "platform": "ios"}).json() == {"ok": True}

@@ -4,6 +4,10 @@ run(ticket, es_tools, trace, max_calls) drives Nemotron (TRIAGENT_MODEL_INVESTIG
 tools.TOOL_SCHEMAS until it calls submit_report or the tool budget runs out, then validates the report and drops
 any cited event id that does not exist in the cluster.
 
+ask(job, question, es_tools, trace, max_calls) is a follow-up on a finished job: the same loop and model, seeded
+with the ticket, the final report and a digest of the trace (prompts/ask.md), ending with answer_question instead
+of submit_report. Cited ids are checked in the cluster the same way.
+
 es_tools needs dispatch(name, args) and, optionally, catalog() and metric_fields(). tools.ESTools provides all.
 trace needs add(kind, **data) (tracelog.Trace).
 """
@@ -18,12 +22,15 @@ from pydantic import ValidationError
 
 import llm
 from contracts import Report
-from tools import SUBMIT_SCHEMA, TOOL_SCHEMAS
+from tools import ANSWER_SCHEMA, ASK_TOOL_SCHEMAS, SUBMIT_SCHEMA, TOOL_SCHEMAS
 
 log = logging.getLogger("triagent.investigator")
 
 PROMPT_PATH = Path(__file__).parent / "prompts" / "investigator.md"
 SYSTEM_PROMPT = PROMPT_PATH.read_text(encoding="utf-8")
+ASK_PROMPT = (Path(__file__).parent / "prompts" / "ask.md").read_text(encoding="utf-8")
+DIGEST_RESULT_CHARS = 300       # per tool result in the follow-up digest
+DIGEST_MAX_CHARS = 24000        # whole digest; the middle is dropped first
 TRACE_RESULT_CHARS = 500
 MODEL_RESULT_CHARS = 12000      # safety net on top of the per-tool caps
 MAX_IDLE_TURNS = 3              # consecutive model turns without a tool call before we stop asking
@@ -279,3 +286,131 @@ def run(ticket: dict[str, Any], es_tools: Any, trace: Any, max_calls: int = 20, 
     trace.add("info", message=f"investigation finished: {loop.calls} tool calls, category="
                               f"{report.root_cause.category}, confidence={report.confidence}")
     return report.model_dump()
+
+
+# ---------------------------------------------------------------------------------------------
+# follow-up questions
+# ---------------------------------------------------------------------------------------------
+def build_digest(job: dict[str, Any]) -> str:
+    """The investigation as the model saw it: tool calls with arguments and shortened results, findings, and
+    earlier follow-ups with their answers. Long digests lose the middle, never the first or last steps."""
+    lines: list[str] = []
+    for e in job.get("trace") or []:
+        if e.get("kind") == "tool" and e.get("name") not in ("submit_report", "answer_question"):
+            res = (e.get("result") or "")[:DIGEST_RESULT_CHARS]
+            lines.append(f"[{e.get('phase') or '-'} #{e.get('call_no')}] {e.get('name')} "
+                         f"{json.dumps(e.get('arguments') or {}, separators=(',', ':'))} -> {res}")
+        elif e.get("kind") == "finding":
+            lines.append(f"[finding {e.get('finding_kind') or 'other'}] {e.get('finding')} "
+                         f"ids={e.get('event_ids') or []}")
+    for a in job.get("actions") or []:
+        if a.get("type") == "ask" and a.get("state") == "answered":
+            lines.append(f"[earlier follow-up] Q: {a.get('question')} A: {a.get('answer')} ids={a.get('event_ids')}")
+    text = "\n".join(lines)
+    if len(text) > DIGEST_MAX_CHARS:
+        half = DIGEST_MAX_CHARS // 2
+        text = text[:half] + f"\n... [{len(text) - DIGEST_MAX_CHARS} chars of the middle omitted] ...\n" + text[-half:]
+    return text
+
+
+def build_ask_message(job: dict[str, Any], question: str, catalog: list[dict[str, Any]]) -> str:
+    t = {k: v for k, v in (job.get("ticket") or {}).items() if v not in (None, "", {}, [])}
+    return "\n".join([
+        "Incident ticket:", json.dumps(t, indent=2), "",
+        f"Ticket time: {t.get('created')}. Tool time windows end here unless you set `end`.", "",
+        "Your final report:", json.dumps(job.get("report"), indent=2), "",
+        "Investigation digest (tool calls and findings, in order):", build_digest(job) or "(empty)", "",
+        "Event catalog (event.code  index  event.action), codes present in the cluster:",
+        *[f"{c['code']}  {c['index']}  {c['action']}" for c in catalog], "",
+        "Follow-up question from the on-call engineer:", question.strip()])
+
+
+class _AskLoop(_Loop):
+    """The investigator loop with answer_question as the terminal tool."""
+
+    def __init__(self, job: dict[str, Any], question: str, es_tools: Any, trace: Any, max_calls: int,
+                 model: str | None, seed: int | None) -> None:
+        super().__init__(job.get("ticket") or {}, es_tools, trace, max_calls, model, seed)
+        self.job, self.question = job, question
+
+    def answer_turn(self, tools: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, bool]:
+        res = self.chat(tools)
+        if not res.tool_calls:
+            return None, False
+        answer: dict[str, Any] | None = None
+        text_replies: list[str] = []
+        for call in res.tool_calls:
+            args = call.get("arguments") or {}
+            if answer is not None:
+                self.reply(res, call, {"error": "not executed: answer_question was called"}, text_replies)
+            elif call["name"] == "answer_question":
+                self.calls += 1
+                self.trace.add("tool", call_no=self.calls, name="answer_question", arguments=args,
+                               result="(answered)")
+                if isinstance(args.get("answer"), str) and args["answer"].strip():
+                    answer = args
+                    self.reply(res, call, {"ok": True}, text_replies)
+                else:
+                    self.reply(res, call, {"error": "answer must be a non-empty string"}, text_replies)
+            elif call["name"] == "submit_report":
+                self.reply(res, call, {"error": "submit_report is not available in a follow-up; call "
+                                                "answer_question"}, text_replies)
+            elif self.calls >= self.max_calls - 1:   # keep the last call for answer_question
+                self.reply(res, call, {"error": "not executed: tool budget exhausted; call answer_question"},
+                           text_replies)
+            else:
+                self.reply(res, call, self.run_tool(call), text_replies)
+        self.flush_text(text_replies)
+        return answer, True
+
+    def run(self) -> dict[str, Any] | None:  # type: ignore[override]
+        catalog = build_catalog(self.tools)
+        self.messages = [{"role": "system", "content": ASK_PROMPT.replace("{max_calls}", str(self.max_calls))},
+                         {"role": "user", "content": build_ask_message(self.job, self.question, catalog)}]
+        self.trace.add("info", message=f"follow-up started: model={self.model} budget={self.max_calls}")
+        idle = 0
+        while self.calls < self.max_calls - 1:
+            answer, acted = self.answer_turn(ASK_TOOL_SCHEMAS)
+            if answer is not None:
+                return answer
+            if acted:
+                idle = 0
+                continue
+            idle += 1
+            if idle >= MAX_IDLE_TURNS:
+                break
+            self.messages.append({"role": "user", "content": "Call a tool, or call answer_question if you can "
+                                  "answer now."})
+        self.messages.append({"role": "user", "content": "Tool budget exhausted. Call answer_question now with "
+                              "what you have. Cite only event ids you retrieved or that appear in the report or "
+                              "digest, and say what you could not confirm."})
+        answer, _ = self.answer_turn([ANSWER_SCHEMA])
+        return answer
+
+
+def ask(job: dict[str, Any], question: str, es_tools: Any, trace: Any, max_calls: int = 8, *,
+        model: str | None = None, seed: int | None = None) -> dict[str, Any]:
+    """Answer a follow-up about a finished job (its Job JSON). Returns {"answer", "event_ids", "confidence"}.
+
+    Raises RuntimeError if the model never calls answer_question. Cited ids that do not exist are dropped and
+    the answer says so.
+    """
+    loop = _AskLoop(job, question, es_tools, trace, max(2, max_calls), model, seed)
+    got = loop.run()
+    if got is None:
+        raise RuntimeError(f"no answer_question after {loop.calls} tool calls")
+    ids = list(dict.fromkeys(str(e) for e in got.get("event_ids") or [] if e))
+    missing, unverified = [], []
+    for eid in ids:
+        res = es_tools.dispatch("get_doc", {"event_id": eid})
+        if isinstance(res, dict) and res.get("error"):
+            unverified.append(eid)
+        elif not (isinstance(res, dict) and res.get("found")):
+            missing.append(eid)
+    trace.add("verify", checked=len(ids), dropped=missing, unverified=unverified)
+    answer = got["answer"].strip()
+    if missing:
+        answer += f" (Removed {len(missing)} cited id(s) that do not exist in the cluster.)"
+    conf = got.get("confidence")
+    return {"answer": answer, "event_ids": [e for e in ids if e not in missing],
+            "confidence": float(conf) if isinstance(conf, (int, float)) else None}

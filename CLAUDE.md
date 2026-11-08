@@ -159,7 +159,7 @@ open_questions: []
 
 ## Prompts
 
-Prompts live in `server/prompts/` as files, not inline strings. Current set: `investigator.md`, `critic.md`, `remediate.md`, `summarize.md`. Rules:
+Prompts live in `server/prompts/` as files, not inline strings. Current set: `investigator.md`, `critic.md`, `remediate.md`, `summarize.md`, `ask.md` (follow-up questions: `POST /jobs/{id}/ask` resumes the investigator with the stored report and a trace digest, `TRIAGENT_ASK_MAX_CALLS` default 8, ending with `answer_question`). Rules:
 - The investigator prompt says: ticket is symptoms only; walk backward from ticket time; widen time (15m, 1h, 3h, 6h) then scope (host, rack, row, cluster, shared appliances); pivot on shared fields; aggregate before reading raw docs; a root cause is a change, deploy, commit, login, config edit, or hardware/environmental alarm, never a metric threshold; expect red herrings and record rejections; cite only retrieved `event.id`s; 20-call budget.
 - The user message includes the ticket plus the compact event catalog (code, index, action for codes with count > 0). Keep it, it is how the model knows which indices exist.
 - The critic gets the report and the full text of every cited doc, nothing else. It checks: ids exist, chain is time-ordered and ends before the ticket, root cause is a concrete event, adjacent chain steps share an identifier, rejections are listed, category matches evidence, confidence is consistent.

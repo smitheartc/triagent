@@ -34,7 +34,8 @@ def build_app(settings: main.Settings | None = None) -> "main.FastAPI":
     """A fake Triagent app: same routes as main.py, scripted pipeline, preloaded jobs."""
     settings = settings or dataclasses.replace(main.Settings.from_env(), fake=True, jobs_dir=REPO / "t" / "fake_jobs",
                                                scores_dir=REPO / "t" / "fake_scores")
-    application = main.create_app(settings=dataclasses.replace(settings, fake=True), pipeline=fakes.fake_pipeline)
+    application = main.create_app(settings=dataclasses.replace(settings, fake=True), pipeline=fakes.fake_pipeline,
+                                   asker=fakes.fake_ask)
 
     async def _startup() -> None:
         scores = application.state.settings.scores_dir

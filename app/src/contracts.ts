@@ -13,7 +13,11 @@ export interface Action {
   note?: string | null;
   question?: string | null;
   ts: string;
-  state?: "recorded" | "queued" | "not_implemented";
+  state?: "recorded" | "queued" | "answering" | "answered" | "failed" | "not_implemented";
+  id?: string | null;
+  answer?: string | null;
+  event_ids?: string[];
+  error?: string | null;
 }
 /**
  * This interface was referenced by `TriagentContracts`'s JSON-Schema
@@ -24,6 +28,16 @@ export interface ActionRequest {
   by?: string;
   note?: string | null;
   question?: string | null;
+}
+/**
+ * Body of POST /jobs/{job_id}/ask.
+ *
+ * This interface was referenced by `TriagentContracts`'s JSON-Schema
+ * via the `definition` "AskRequest".
+ */
+export interface AskRequest {
+  question: string;
+  by?: string;
 }
 /**
  * This interface was referenced by `TriagentContracts`'s JSON-Schema
@@ -269,7 +283,7 @@ export interface TraceEntry {
     | "critic"
     | "remediation"
     | "action";
-  phase?: ("investigate" | "critic" | "retry" | "critic_retry") | null;
+  phase?: ("investigate" | "critic" | "retry" | "critic_retry" | "ask") | null;
   status?: ("queued" | "running" | "critic" | "remediating" | "done" | "failed") | null;
   message?: string | null;
   name?: string | null;

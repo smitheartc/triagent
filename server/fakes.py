@@ -4,6 +4,7 @@ For the app (via fake_server.py)
   TEMPLATES          three scripted investigations (cooling pass; config with a critic retry; deploy pass) whose
                      trace, report, critic and remediation match contracts.py exactly
   fake_pipeline      plays a template onto a main.Job with realistic pacing (TRIAGENT_FAKE_SPEED, default 1)
+  fake_ask           answers a follow-up (POST /jobs/{id}/ask) from the job's own report, same Action states
   preload(registry)  fills a registry with finished, retried, failed and one live job
   sample_score_run() a ScoreRun shaped like the scorer's output
 
@@ -326,6 +327,42 @@ def _retry_report(tpl: dict[str, Any]) -> dict[str, Any]:
     if "confidence" in patch:
         rep["confidence"] = patch["confidence"]
     return rep
+
+
+async def fake_ask(job: Any, action: dict[str, Any], settings: Any, speed: float | None = None) -> None:
+    """Follow-up with the same Action states as main.run_ask: queued -> answering -> answered. The answer is
+    built from the job's report: a question naming a rejected candidate gets that candidate's reasoning and ids."""
+    speed = _speed() if speed is None else speed
+    report = job.report or {}
+    q = (action.get("question") or "").lower()
+    rejected = report.get("rejected_candidates") or []
+    pick = next((r for r in rejected if any(w in q for w in re.findall(r"[a-z0-9][a-z0-9-]{3,}",
+                                                                      r.get("what", "").lower()))), None)
+    pick = pick or (rejected[0] if rejected and ("reject" in q or "rule" in q or "why not" in q) else None)
+    if pick:
+        ids = list(pick.get("event_ids") or [])
+        answer = f"I ruled out {pick['what']}: {pick['why_rejected']}"
+    else:
+        rc = report.get("root_cause") or {}
+        ids = list(rc.get("event_ids") or [])
+        answer = f"The cause is {rc.get('entity', 'unknown')}: {rc.get('summary', '')}"
+    job.trace.phase = "ask"
+    try:
+        action["state"] = "answering"
+        job.trace.add("action", action=dict(action))
+        job.trace.add("info", message="follow-up started (fake)")
+        steps = [(1.5, "llm", {"model": "fake/nemotron-super", "prompt_tokens": 9000, "completion_tokens": 300,
+                               "latency_ms": 1400, "tool_name": "get_doc" if ids else "answer_question"})]
+        if ids:
+            steps.append((0.5, "tool", {"call_no": 1, "name": "get_doc", "arguments": {"event_id": ids[0]},
+                                        "result": json.dumps({"found": True, "event_id": ids[0]})}))
+        steps.append((1.0, "tool", {"call_no": len(steps), "name": "answer_question",
+                                    "arguments": {"answer": answer, "event_ids": ids}, "result": "(answered)"}))
+        await _play(job, steps, speed)
+        action.update(state="answered", answer=answer, event_ids=ids)
+    finally:
+        job.trace.add("action", action=dict(action))
+        job.trace.phase = None
 
 
 async def fake_pipeline(job: Any, settings: Any, speed: float | None = None, fail_after: int | None = None) -> None:

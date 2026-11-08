@@ -27,7 +27,7 @@ firewall to allow inbound 8080. The same commands work against the real pipeline
 | Inbox (polls every 3 s) | `/` | `GET /jobs` |
 | Incident detail (polls until done/failed) | `/jobs/[id]` | `GET /jobs/{id}` |
 | Live investigation | `/jobs/[id]/live` | `GET /jobs/{id}/events` (SSE, read with `expo/fetch` streaming) |
-| Actions: approve, escalate, ask | `/jobs/[id]/actions` | `POST /jobs/{id}/actions` |
+| Actions: approve, escalate, ask | `/jobs/[id]/actions` | `POST /jobs/{id}/actions`; ask: `POST /jobs/{id}/ask`, answer polled from `GET /jobs/{id}` |
 | Scoreboard | `/scores` | `GET /scores/latest` |
 | push registration (at launch) | – | `POST /devices` |
 
@@ -65,5 +65,3 @@ A development build talks plain `http://` to the LAN server, so Android needs cl
 
 - Supabase: the spec reads jobs from Supabase (realtime Inbox) once `server/store.py` writes them; until then the
   Inbox polls `GET /jobs`.
-- Ask: the server records the question with `state: "not_implemented"` and does not re-run the investigator yet; the
-  app says so after sending.

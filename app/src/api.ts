@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { fetch } from 'expo/fetch';
 import { Platform } from 'react-native';
 
-import type { Action, ActionRequest, DeviceRegistration, Job, JobSummary, ScoreRun } from './contracts';
+import type { Action, ActionRequest, AskRequest, DeviceRegistration, Job, JobSummary, ScoreRun } from './contracts';
 
 /**
  * The Triagent server: server/main.py, or server/fake_server.py while the pipeline is being built.
@@ -66,6 +66,8 @@ export const api = {
   jobs: () => request<JobSummary[]>('/jobs'),
   job: (jobId: string) => request<Job>(`/jobs/${id(jobId)}`),
   act: (jobId: string, body: ActionRequest) => request<Action>(`/jobs/${id(jobId)}/actions`, body),
+  /** Follow-up question; the answer arrives on the returned Action (by id) in GET /jobs/{id}. */
+  ask: (jobId: string, body: AskRequest) => request<Action>(`/jobs/${id(jobId)}/ask`, body),
   latestScores: () => request<ScoreRun>('/scores/latest'),
   registerDevice: (body: DeviceRegistration) => request<{ ok: boolean }>('/devices', body),
   eventsUrl: (jobId: string) => `${API_URL}/jobs/${id(jobId)}/events`,

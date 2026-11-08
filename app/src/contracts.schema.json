@@ -49,10 +49,56 @@
           "enum": [
             "recorded",
             "queued",
+            "answering",
+            "answered",
+            "failed",
             "not_implemented"
           ],
           "title": "State",
           "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "answer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Answer"
+        },
+        "event_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Event Ids",
+          "type": "array"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
         }
       },
       "required": [
@@ -107,6 +153,26 @@
         "type"
       ],
       "title": "ActionRequest",
+      "type": "object"
+    },
+    "AskRequest": {
+      "description": "Body of POST /jobs/{job_id}/ask.",
+      "properties": {
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "by": {
+          "default": "demo",
+          "title": "By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "question"
+      ],
+      "title": "AskRequest",
       "type": "object"
     },
     "ChainStep": {
@@ -1343,7 +1409,8 @@
                 "investigate",
                 "critic",
                 "retry",
-                "critic_retry"
+                "critic_retry",
+                "ask"
               ],
               "type": "string"
             },

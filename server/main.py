@@ -21,7 +21,9 @@ Endpoints
     GET  /jobs                newest first, JobSummary rows (Inbox)
     GET  /jobs/{job_id}       status (queued|running|critic|remediating|done|failed), report, trace
     GET  /jobs/{job_id}/events  Server-Sent Events stream of trace entries
-    POST /jobs/{job_id}/actions  approve | escalate | ask (recorded on the job)
+    POST /jobs/{job_id}/actions  approve | escalate | ask (recorded on the job; ask runs a follow-up)
+    POST /jobs/{job_id}/ask   follow-up question: the investigator resumes with the report and trace as context
+                              (TRIAGENT_ASK_MAX_CALLS, default 8); the answer lands on the returned Action
     GET  /scores/latest       newest scorer run from t/scores/ (Scoreboard)
     POST /devices             register an Expo push token
     GET  /health              ES reachability, API key presence per role, configured model ids
@@ -70,7 +72,8 @@ import llm
 import notify
 import store
 import jira_mock
-from contracts import Action, ActionRequest, DeviceRegistration, WebhookPayload, summarize
+from contracts import (DEFAULT_ASK_MAX_CALLS, Action, ActionRequest, AskRequest, DeviceRegistration, WebhookPayload,
+                       summarize)
 from tools import ESTools
 from tracelog import Trace
 
@@ -107,6 +110,7 @@ class Settings:
     public_url: str = ""                  # TRIAGENT_PUBLIC_URL: base URL put in ticket comments, if set
     max_parallel_jobs: int = 3
     push_mode: str = "webhook"            # TRIAGENT_PUSH: webhook | all | off
+    ask_max_calls: int = DEFAULT_ASK_MAX_CALLS
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -126,6 +130,7 @@ class Settings:
             public_url=(os.environ.get("TRIAGENT_PUBLIC_URL") or "").rstrip("/"),
             max_parallel_jobs=max(1, int(os.environ.get("TRIAGENT_MAX_PARALLEL_JOBS", "3"))),
             push_mode=(os.environ.get("TRIAGENT_PUSH") or "webhook").strip().lower(),
+            ask_max_calls=max(2, int(os.environ.get("TRIAGENT_ASK_MAX_CALLS", str(DEFAULT_ASK_MAX_CALLS)))),
         )
 
 
@@ -468,6 +473,32 @@ async def run_pipeline(job: Job, settings: Settings) -> None:
         store_report(job)   # the final row includes entries added after the terminal status (push outcome)
 
 
+async def run_ask(job: Job, action: dict[str, Any], settings: Settings) -> None:
+    """Follow-up: investigator.ask over the finished job, then the answer onto the action. Never raises."""
+    ticket = job.ticket
+    es = ESTools(settings.es_url, namespace=ticket.get("namespace") or "dal1", anchor=ticket["created"],
+                 api_key=settings.es_api_key)
+    job.trace.phase = "ask"
+    try:
+        action["state"] = "answering"
+        job.trace.add("action", action=dict(action))
+        got = await asyncio.to_thread(investigator.ask, job.view(), action["question"], es, job.trace,
+                                      settings.ask_max_calls, seed=job.seed)
+        action.update(state="answered", answer=got["answer"], event_ids=got["event_ids"])
+    except Exception as exc:  # noqa: BLE001 - an ask must always end answered or failed
+        log.exception("job %s: follow-up %s failed", job.job_id, action.get("id"))
+        action.update(state="failed", error=f"{type(exc).__name__}: {exc}")
+    finally:
+        es.close()
+        job.trace.add("action", action=dict(action))
+        job.trace.phase = None
+        store_report(job)
+        try:
+            await asyncio.to_thread(persist, job, settings.jobs_dir)
+        except OSError:
+            log.exception("could not persist job %s", job.job_id)
+
+
 # ---------------------------------------------------------------------------------------------
 # app
 # ---------------------------------------------------------------------------------------------
@@ -526,18 +557,56 @@ async def list_jobs(request: Request, limit: int = 50) -> list[dict[str, Any]]:
     return [summarize(j.view(with_trace=False)) for j in jobs]
 
 
-@router.post("/jobs/{job_id}/actions")
-async def job_action(job_id: str, body: ActionRequest, request: Request) -> dict[str, Any]:
-    """Record an approve / escalate / ask action on a job. Re-entering the investigator for 'ask' is a later step."""
+def _now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+async def _start_ask(request: Request, job: Job, question: str, by: str) -> dict[str, Any]:
+    if job.status != "done" or not job.report:
+        raise HTTPException(409, f"job {job.job_id} is {job.status}; follow-ups need a finished report")
+    action = Action(type="ask", by=by, question=question.strip(), ts=_now(), state="queued",
+                    id=f"ask-{uuid.uuid4().hex[:10]}").model_dump()
+    job.actions.append(action)
+    job.trace.add("action", action=dict(action))
+    reg = _registry(request)
+    if reg.slots is None:
+        reg.slots = asyncio.Semaphore(request.app.state.settings.max_parallel_jobs)
+
+    async def go() -> None:
+        async with reg.slots:
+            await request.app.state.asker(job, action, request.app.state.settings)
+    task = asyncio.create_task(go())
+    reg.tasks.add(task)
+    task.add_done_callback(reg.tasks.discard)
+    log.info("job %s: follow-up %s queued", job.job_id, action["id"])
+    return dict(action)
+
+
+@router.post("/jobs/{job_id}/ask")
+async def job_ask(job_id: str, body: AskRequest, request: Request) -> dict[str, Any]:
+    """Follow-up question. Returns the Action (queued); poll GET /jobs/{job_id} for its answer by id."""
     job = _registry(request).jobs.get(job_id)
     if job is None:
         raise HTTPException(404, f"unknown job {job_id}")
-    if body.type == "ask" and not (body.question or "").strip():
+    if not body.question.strip():
         raise HTTPException(422, "ask needs a question")
-    action = Action(**body.model_dump(), ts=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    state="not_implemented" if body.type == "ask" else "recorded").model_dump()
+    return await _start_ask(request, job, body.question, body.by)
+
+
+@router.post("/jobs/{job_id}/actions")
+async def job_action(job_id: str, body: ActionRequest, request: Request) -> dict[str, Any]:
+    """Record an approve / escalate action on a job; an ask starts a follow-up (same as POST /jobs/{id}/ask)."""
+    job = _registry(request).jobs.get(job_id)
+    if job is None:
+        raise HTTPException(404, f"unknown job {job_id}")
+    if body.type == "ask":
+        if not (body.question or "").strip():
+            raise HTTPException(422, "ask needs a question")
+        return await _start_ask(request, job, body.question, body.by)
+    action = Action(**body.model_dump(), ts=_now(), state="recorded").model_dump()
     job.actions.append(action)
     job.trace.add("action", action=action)
+    store_report(job)
     return action
 
 
@@ -634,7 +703,7 @@ async def health(request: Request) -> dict[str, Any]:
             "max_tool_calls": s.max_tool_calls}
 
 
-def create_app(settings: Settings | None = None, pipeline: Any = None) -> FastAPI:
+def create_app(settings: Settings | None = None, pipeline: Any = None, asker: Any = None) -> FastAPI:
     """A Triagent app. fake_server.py builds one with the scripted pipeline; tests swap state.pipeline."""
     application = FastAPI(title="Triagent", version="0.1.0")
     # The app's web build is served from another origin (Expo on :8081). No auth on this API (LAN demo), so any origin.
@@ -643,6 +712,7 @@ def create_app(settings: Settings | None = None, pipeline: Any = None) -> FastAP
     application.state.registry = Registry()
     application.state.settings = settings or Settings.from_env()
     application.state.pipeline = pipeline or run_pipeline
+    application.state.asker = asker or run_ask
     st = store.default()
     application.state.store_writer = StoreWriter(st) if st.enabled and not application.state.settings.fake else None
 
