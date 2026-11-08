@@ -9,7 +9,7 @@ Creates, idempotently and via the REST API only (stdlib urllib, no third-party d
   * Kibana data views   per area (facility, compute, network, app, security, change, incidents, all) with --kibana-url
 
 The list of data streams comes from event_catalog.json (written by dcsim.py) or, failing that, from
-importing EVENTS out of dcsim.py in the same directory. Adding a dataset to EVENTS is enough: rerun this.
+importing EVENTS out of ../sim/dcsim.py. Adding a dataset to EVENTS is enough: rerun this.
 
 Run this BEFORE the first dcsim.py --es-url ingest. Templates only affect new backing indices, so after a
 mapping change use --reset (deletes the dcsim data streams) and ingest again.
@@ -142,7 +142,9 @@ def load_streams(catalog_path: str) -> list[tuple[str, str]]:
                 pairs.add((entry["data_stream.type"], entry["data_stream.dataset"]))
         src = catalog_path
     else:
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        here = os.path.dirname(os.path.abspath(__file__))
+        # dcsim.py lives in ../sim since this file moved to escluster/; keep the same-directory lookup too.
+        sys.path[:0] = [here, os.path.join(os.path.dirname(here), "sim")]
         try:
             import dcsim  # noqa: WPS433
         except ImportError:
@@ -259,9 +261,13 @@ def apply(es: Client | None, dump_dir, method, path, body, name):
 
 
 def reset(es: Client, streams, ns):
-    patterns = ",".join(f"{t}-{d}-{ns}" for t, d in streams)
-    st, _ = es.call("DELETE", f"/_data_stream/{patterns}?expand_wildcards=all", quiet_404=True)
-    print(f"  deleted dcsim data streams for namespace {ns} ({'none existed' if st == 404 else 'ok'})", file=sys.stderr)
+    # One DELETE per stream: a comma list 404s as a whole when any one name is missing (a single-scenario ingest
+    # creates only some streams), and then nothing at all is deleted.
+    deleted = 0
+    for t, d in streams:
+        st, _ = es.call("DELETE", f"/_data_stream/{t}-{d}-{ns}?expand_wildcards=all", quiet_404=True)
+        deleted += st != 404
+    print(f"  deleted {deleted} dcsim data streams for namespace {ns}", file=sys.stderr)
 
 
 def verify(es: Client, streams, ns):
