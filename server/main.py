@@ -306,11 +306,32 @@ def _numbered(items: list[str], empty: str) -> str:
     return "\n".join(f"{i}. {x}" for i, x in enumerate(items, 1)) if items else empty
 
 
-def _cost(job: Job) -> str:
+def _dur(seconds: float) -> str:
+    seconds = int(round(seconds))
+    return f"{seconds // 60}m{seconds % 60:02d}s" if seconds >= 60 else f"{seconds}s"
+
+
+def cost_line(job: Job) -> str:
+    """One line of cost and latency for a finished job: the trace's last info entry, the server log and the ticket
+    comment all carry it. Tokens are the cost unit (NVIDIA hosted credits are billed by token)."""
     t = job.trace.totals()
-    secs = (job.finished or time.time()) - job.created
-    return (f"{t['llm_calls']} model calls, {t['tool_calls']} tool calls, "
-            f"{t['prompt_tokens'] + t['completion_tokens']} tokens, {secs:.0f}s")
+    tokens = t["prompt_tokens"] + t["completion_tokens"]
+    line = (f"{tokens:,} tokens ({t['prompt_tokens']:,} in, {t['completion_tokens']:,} out) over {t['llm_calls']} "
+            f"model calls and {t['tool_calls']} tool calls; {_dur((job.finished or time.time()) - job.created)} "
+            f"end to end")
+    if job.initial_seconds is not None:
+        line += f", first report at {_dur(job.initial_seconds)}"
+    return line + f", {_dur(t['llm_latency_ms'] / 1000)} waiting on the model"
+
+
+def _log_cost(job: Job) -> None:
+    line = cost_line(job)
+    job.trace.add("info", message=f"cost and latency: {line}")
+    log.info("job %s %s: %s", job.job_id, job.ticket.get("ticket_id"), line)
+
+
+def _cost(job: Job) -> str:
+    return cost_line(job)
 
 
 def render_comment(job: Job, settings: Settings, status: str) -> dict[str, Any]:
@@ -457,6 +478,7 @@ async def run_pipeline(job: Job, settings: Settings) -> None:
 
         store_report(job)
         job.finished = time.time()
+        _log_cost(job)
         # Before the terminal status: SSE ends once the status is terminal, and the patch outcome is a trace entry.
         await asyncio.to_thread(patch_ticket, job, settings, "done")
         job.set_status("done", totals=job.trace.totals())
@@ -466,6 +488,7 @@ async def run_pipeline(job: Job, settings: Settings) -> None:
         job.error = f"{type(exc).__name__}: {exc}"
         job.trace.add("error", message=job.error)
         job.finished = time.time()
+        _log_cost(job)
         await asyncio.to_thread(patch_ticket, job, settings, "failed")
         job.set_status("failed")
         await asyncio.to_thread(push_finished, job, settings)

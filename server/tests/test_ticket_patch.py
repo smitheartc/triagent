@@ -189,6 +189,14 @@ def test_investigate_job_never_comments(monkeypatch, tmp_path, mock_server):
     assert mock_server.issues["INC7000001"]["comments"] == []
 
 
+def test_every_job_ends_with_a_cost_and_latency_line(monkeypatch, tmp_path, client):
+    job = _run(monkeypatch, _settings(tmp_path, ticket_backend="none"), "investigate")
+    main.app.state.registry.jobs[job.job_id] = job
+    view = client.get(f"/jobs/{job.job_id}").json()
+    line = next(e["message"] for e in view["trace"] if (e.get("message") or "").startswith("cost and latency: "))
+    assert "tokens" in line and "tool calls" in line and "end to end" in line and "first report at" in line
+
+
 # ---------------------------------------------------------------------------------------------
 # main.py: dedupe on ticket_id + created, parallel slots
 # ---------------------------------------------------------------------------------------------
